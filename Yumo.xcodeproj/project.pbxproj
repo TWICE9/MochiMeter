@@ -6,6 +6,21 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		1825510A2EE05A5000BFD72A /* SuperwallKit in Frameworks */ = {isa = PBXBuildFile; productRef = 182551092EE05A5000BFD72A /* SuperwallKit */; };
+		187AA88F2ECD916F000ACC62 /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = 187AA88E2ECD916F000ACC62 /* Auth */; };
+		188637BC2EC5FF8B00521F01 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 188637BB2EC5FF8A00521F01 /* WidgetKit.framework */; };
+		188637BE2EC5FF8B00521F01 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 188637BD2EC5FF8B00521F01 /* SwiftUI.framework */; };
+		188637CD2EC5FF8C00521F01 /* YumoWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 188637B92EC5FF8A00521F01 /* YumoWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		18AA35ED2ECC8304002AFB3A /* PostgREST in Frameworks */ = {isa = PBXBuildFile; productRef = 18AA35EC2ECC8304002AFB3A /* PostgREST */; };
+		18AA35EF2ECC8304002AFB3A /* Realtime in Frameworks */ = {isa = PBXBuildFile; productRef = 18AA35EE2ECC8304002AFB3A /* Realtime */; };
+		18AA35F12ECC8304002AFB3A /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = 18AA35F02ECC8304002AFB3A /* Storage */; };
+		18AA35F32ECC8304002AFB3A /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 18AA35F22ECC8304002AFB3A /* Supabase */; };
+		18AC183D2EF008EE00EBCEBA /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 18AC183C2EF008EE00EBCEBA /* GoogleSignIn */; };
+		18AC183F2EF008EE00EBCEBA /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 18AC183E2EF008EE00EBCEBA /* GoogleSignInSwift */; };
+		18AC18432EF03DCD00EBCEBA /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 18AC18422EF03DCD00EBCEBA /* StoreKit.framework */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		187B324A2EBEE1B400389DAC /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -21,28 +36,134 @@
 			remoteGlobalIDString = 187B323B2EBEE1B200389DAC;
 			remoteInfo = Yumo;
 		};
+		188637CB2EC5FF8C00521F01 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 187B32342EBEE1B200389DAC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 188637B82EC5FF8A00521F01;
+			remoteInfo = YumoWidgetsExtension;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		188637D22EC5FF8C00521F01 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				188637CD2EC5FF8C00521F01 /* YumoWidgetsExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		187B323C2EBEE1B200389DAC /* Yumo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Yumo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		187B32492EBEE1B400389DAC /* YumoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YumoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		187B32532EBEE1B400389DAC /* YumoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YumoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		188637B92EC5FF8A00521F01 /* YumoWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = YumoWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		188637BB2EC5FF8A00521F01 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		188637BD2EC5FF8B00521F01 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		188637D92EC6009800521F01 /* YumoWidgetsExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = YumoWidgetsExtension.entitlements; sourceTree = "<group>"; };
+		18AC18422EF03DCD00EBCEBA /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		18254B092ECDE80500BFD72A /* Exceptions for "YumoTests" folder in "Yumo" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				YumoTests.swift,
+			);
+			target = 187B323B2EBEE1B200389DAC /* Yumo */;
+		};
+		18254B0A2ECDE80500BFD72A /* Exceptions for "YumoTests" folder in "YumoTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				YumoTests.swift,
+			);
+			target = 187B32482EBEE1B400389DAC /* YumoTests */;
+		};
+		188637462EC4C65D00521F01 /* Exceptions for "Yumo" folder in "Yumo" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Helpers/ScaleEffectOnPress.swift,
+				Info.plist,
+				Yumo.entitlements,
+			);
+			target = 187B323B2EBEE1B200389DAC /* Yumo */;
+		};
+		188637D12EC5FF8C00521F01 /* Exceptions for "YumoWidgets" folder in "YumoWidgetsExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 188637B82EC5FF8A00521F01 /* YumoWidgetsExtension */;
+		};
+		188637D82EC5FFED00521F01 /* Exceptions for "Yumo" folder in "YumoWidgetsExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Assets.xcassets,
+				Cloud/CloudFood.swift,
+				Helpers/InputValidation.swift,
+				Helpers/SharedModelContainer.swift,
+				Helpers/WaterCupShape.swift,
+				Models/CommonFood.swift,
+				Models/FastingLog.swift,
+				Models/LoggedFood.swift,
+				Models/LoggedWater.swift,
+				Models/MasterFoodRow.swift,
+				Models/OpenFoodFactsModels.swift,
+				Models/Recipe.swift,
+				Models/Reminder.swift,
+				Models/UserGoals.swift,
+			);
+			target = 188637B82EC5FF8A00521F01 /* YumoWidgetsExtension */;
+		};
+		188637E92EC611AD00521F01 /* Exceptions for "YumoWidgets" folder in "Yumo" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				LogWaterIntent.swift,
+			);
+			target = 187B323B2EBEE1B200389DAC /* Yumo */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		187B323E2EBEE1B200389DAC /* Yumo */ = {
+		18254B072ECDE80400BFD72A /* YumoTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = Yumo;
+			exceptions = (
+				18254B092ECDE80500BFD72A /* Exceptions for "YumoTests" folder in "Yumo" target */,
+				18254B0A2ECDE80500BFD72A /* Exceptions for "YumoTests" folder in "YumoTests" target */,
+			);
+			path = YumoTests;
 			sourceTree = "<group>";
 		};
-		187B324C2EBEE1B400389DAC /* YumoTests */ = {
+		187B323E2EBEE1B200389DAC /* Yumo */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = YumoTests;
+			exceptions = (
+				188637462EC4C65D00521F01 /* Exceptions for "Yumo" folder in "Yumo" target */,
+				188637D82EC5FFED00521F01 /* Exceptions for "Yumo" folder in "YumoWidgetsExtension" target */,
+			);
+			explicitFileTypes = {
+				Yumo.entitlements = sourcecode.swift;
+			};
+			path = Yumo;
 			sourceTree = "<group>";
 		};
 		187B32562EBEE1B400389DAC /* YumoUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = YumoUITests;
+			sourceTree = "<group>";
+		};
+		188637BF2EC5FF8B00521F01 /* YumoWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				188637E92EC611AD00521F01 /* Exceptions for "YumoWidgets" folder in "Yumo" target */,
+				188637D12EC5FF8C00521F01 /* Exceptions for "YumoWidgets" folder in "YumoWidgetsExtension" target */,
+			);
+			path = YumoWidgets;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -52,6 +173,15 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				18AC18432EF03DCD00EBCEBA /* StoreKit.framework in Frameworks */,
+				18AA35F32ECC8304002AFB3A /* Supabase in Frameworks */,
+				18AA35F12ECC8304002AFB3A /* Storage in Frameworks */,
+				18AA35ED2ECC8304002AFB3A /* PostgREST in Frameworks */,
+				18AC183F2EF008EE00EBCEBA /* GoogleSignInSwift in Frameworks */,
+				187AA88F2ECD916F000ACC62 /* Auth in Frameworks */,
+				18AA35EF2ECC8304002AFB3A /* Realtime in Frameworks */,
+				1825510A2EE05A5000BFD72A /* SuperwallKit in Frameworks */,
+				18AC183D2EF008EE00EBCEBA /* GoogleSignIn in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -69,15 +199,27 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		188637B62EC5FF8A00521F01 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				188637BE2EC5FF8B00521F01 /* SwiftUI.framework in Frameworks */,
+				188637BC2EC5FF8B00521F01 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		187B32332EBEE1B200389DAC = {
 			isa = PBXGroup;
 			children = (
+				188637D92EC6009800521F01 /* YumoWidgetsExtension.entitlements */,
 				187B323E2EBEE1B200389DAC /* Yumo */,
-				187B324C2EBEE1B400389DAC /* YumoTests */,
 				187B32562EBEE1B400389DAC /* YumoUITests */,
+				18254B072ECDE80400BFD72A /* YumoTests */,
+				188637BF2EC5FF8B00521F01 /* YumoWidgets */,
+				188637BA2EC5FF8A00521F01 /* Frameworks */,
 				187B323D2EBEE1B200389DAC /* Products */,
 			);
 			sourceTree = "<group>";
@@ -88,8 +230,19 @@
 				187B323C2EBEE1B200389DAC /* Yumo.app */,
 				187B32492EBEE1B400389DAC /* YumoTests.xctest */,
 				187B32532EBEE1B400389DAC /* YumoUITests.xctest */,
+				188637B92EC5FF8A00521F01 /* YumoWidgetsExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		188637BA2EC5FF8A00521F01 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				18AC18422EF03DCD00EBCEBA /* StoreKit.framework */,
+				188637BB2EC5FF8A00521F01 /* WidgetKit.framework */,
+				188637BD2EC5FF8B00521F01 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -102,16 +255,27 @@
 				187B32382EBEE1B200389DAC /* Sources */,
 				187B32392EBEE1B200389DAC /* Frameworks */,
 				187B323A2EBEE1B200389DAC /* Resources */,
+				188637D22EC5FF8C00521F01 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				188637CC2EC5FF8C00521F01 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
+				18254B072ECDE80400BFD72A /* YumoTests */,
 				187B323E2EBEE1B200389DAC /* Yumo */,
 			);
 			name = Yumo;
 			packageProductDependencies = (
+				18AA35EC2ECC8304002AFB3A /* PostgREST */,
+				18AA35EE2ECC8304002AFB3A /* Realtime */,
+				18AA35F02ECC8304002AFB3A /* Storage */,
+				18AA35F22ECC8304002AFB3A /* Supabase */,
+				187AA88E2ECD916F000ACC62 /* Auth */,
+				182551092EE05A5000BFD72A /* SuperwallKit */,
+				18AC183C2EF008EE00EBCEBA /* GoogleSignIn */,
+				18AC183E2EF008EE00EBCEBA /* GoogleSignInSwift */,
 			);
 			productName = Yumo;
 			productReference = 187B323C2EBEE1B200389DAC /* Yumo.app */;
@@ -129,9 +293,6 @@
 			);
 			dependencies = (
 				187B324B2EBEE1B400389DAC /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				187B324C2EBEE1B400389DAC /* YumoTests */,
 			);
 			name = YumoTests;
 			packageProductDependencies = (
@@ -163,6 +324,28 @@
 			productReference = 187B32532EBEE1B400389DAC /* YumoUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		188637B82EC5FF8A00521F01 /* YumoWidgetsExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 188637CE2EC5FF8C00521F01 /* Build configuration list for PBXNativeTarget "YumoWidgetsExtension" */;
+			buildPhases = (
+				188637B52EC5FF8A00521F01 /* Sources */,
+				188637B62EC5FF8A00521F01 /* Frameworks */,
+				188637B72EC5FF8A00521F01 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				188637BF2EC5FF8B00521F01 /* YumoWidgets */,
+			);
+			name = YumoWidgetsExtension;
+			packageProductDependencies = (
+			);
+			productName = YumoWidgetsExtension;
+			productReference = 188637B92EC5FF8A00521F01 /* YumoWidgetsExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -184,6 +367,9 @@
 						CreatedOnToolsVersion = 26.0.1;
 						TestTargetID = 187B323B2EBEE1B200389DAC;
 					};
+					188637B82EC5FF8A00521F01 = {
+						CreatedOnToolsVersion = 26.0.1;
+					};
 				};
 			};
 			buildConfigurationList = 187B32372EBEE1B200389DAC /* Build configuration list for PBXProject "Yumo" */;
@@ -195,6 +381,11 @@
 			);
 			mainGroup = 187B32332EBEE1B200389DAC;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				18AA35EB2ECC8304002AFB3A /* XCRemoteSwiftPackageReference "supabase-swift" */,
+				182551082EE05A5000BFD72A /* XCRemoteSwiftPackageReference "Superwall-iOS" */,
+				18AC183B2EF008EE00EBCEBA /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 187B323D2EBEE1B200389DAC /* Products */;
 			projectDirPath = "";
@@ -203,6 +394,7 @@
 				187B323B2EBEE1B200389DAC /* Yumo */,
 				187B32482EBEE1B400389DAC /* YumoTests */,
 				187B32522EBEE1B400389DAC /* YumoUITests */,
+				188637B82EC5FF8A00521F01 /* YumoWidgetsExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -223,6 +415,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		187B32512EBEE1B400389DAC /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		188637B72EC5FF8A00521F01 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -253,6 +452,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		188637B52EC5FF8A00521F01 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -265,6 +471,11 @@
 			isa = PBXTargetDependency;
 			target = 187B323B2EBEE1B200389DAC /* Yumo */;
 			targetProxy = 187B32542EBEE1B400389DAC /* PBXContainerItemProxy */;
+		};
+		188637CC2EC5FF8C00521F01 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 188637B82EC5FF8A00521F01 /* YumoWidgetsExtension */;
+			targetProxy = 188637CB2EC5FF8C00521F01 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -395,16 +606,25 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Yumo/Yumo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 1.01;
 				DEVELOPMENT_TEAM = AKGUAYDPCS;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Yumo/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Mochi Meter";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Yumo needs camera access to scan food items and analyze nutrition information.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Yumo needs access to your step count data to help you track your daily activity and calories burned.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Yumo may write health data to keep your activity information synchronized.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Yumo needs access to your photo library to analyze food images.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -413,6 +633,10 @@
 				PRODUCT_BUNDLE_IDENTIFIER = v0.01.Yumo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -427,16 +651,25 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Yumo/Yumo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 1.01;
 				DEVELOPMENT_TEAM = AKGUAYDPCS;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Yumo/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Mochi Meter";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Yumo needs camera access to scan food items and analyze nutrition information.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Yumo needs access to your step count data to help you track your daily activity and calories burned.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Yumo may write health data to keep your activity information synchronized.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Yumo needs access to your photo library to analyze food images.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -445,6 +678,10 @@
 				PRODUCT_BUNDLE_IDENTIFIER = v0.01.Yumo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -467,6 +704,10 @@
 				PRODUCT_BUNDLE_IDENTIFIER = v0.01.YumoTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -489,6 +730,10 @@
 				PRODUCT_BUNDLE_IDENTIFIER = v0.01.YumoTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -509,6 +754,10 @@
 				PRODUCT_BUNDLE_IDENTIFIER = v0.01.YumoUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -529,12 +778,86 @@
 				PRODUCT_BUNDLE_IDENTIFIER = v0.01.YumoUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = Yumo;
+			};
+			name = Release;
+		};
+		188637CF2EC5FF8C00521F01 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = YumoWidgetsExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = AKGUAYDPCS;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = YumoWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = YumoWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = v0.01.Yumo.YumoWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		188637D02EC5FF8C00521F01 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = YumoWidgetsExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = AKGUAYDPCS;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = YumoWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = YumoWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = v0.01.Yumo.YumoWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -577,7 +900,86 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		188637CE2EC5FF8C00521F01 /* Build configuration list for PBXNativeTarget "YumoWidgetsExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				188637CF2EC5FF8C00521F01 /* Debug */,
+				188637D02EC5FF8C00521F01 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		182551082EE05A5000BFD72A /* XCRemoteSwiftPackageReference "Superwall-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/superwall/Superwall-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.10.6;
+			};
+		};
+		18AA35EB2ECC8304002AFB3A /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift.git";
+			requirement = {
+				kind = exactVersion;
+				version = 2.5.1;
+			};
+		};
+		18AC183B2EF008EE00EBCEBA /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		182551092EE05A5000BFD72A /* SuperwallKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 182551082EE05A5000BFD72A /* XCRemoteSwiftPackageReference "Superwall-iOS" */;
+			productName = SuperwallKit;
+		};
+		187AA88E2ECD916F000ACC62 /* Auth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 18AA35EB2ECC8304002AFB3A /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Auth;
+		};
+		18AA35EC2ECC8304002AFB3A /* PostgREST */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 18AA35EB2ECC8304002AFB3A /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = PostgREST;
+		};
+		18AA35EE2ECC8304002AFB3A /* Realtime */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 18AA35EB2ECC8304002AFB3A /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Realtime;
+		};
+		18AA35F02ECC8304002AFB3A /* Storage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 18AA35EB2ECC8304002AFB3A /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Storage;
+		};
+		18AA35F22ECC8304002AFB3A /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 18AA35EB2ECC8304002AFB3A /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+		18AC183C2EF008EE00EBCEBA /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 18AC183B2EF008EE00EBCEBA /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		18AC183E2EF008EE00EBCEBA /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 18AC183B2EF008EE00EBCEBA /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 187B32342EBEE1B200389DAC /* Project object */;
 }
