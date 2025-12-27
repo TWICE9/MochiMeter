@@ -172,24 +172,24 @@ struct SearchScreen: View {
                     }
                     .padding(.horizontal, 24)
 
-                    // Results Card
-                    borderlessCard {
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("Results")
-                                .font(.headline)
-                                .foregroundStyle(adaptiveTextColor)
+                    // Results Section
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Results")
+                            .font(.headline)
+                            .foregroundStyle(adaptiveTextColor)
 
-                            let trimmedSearch = searchText.trimmingCharacters(in: .whitespaces)
-                            let isTooShort = !trimmedSearch.isEmpty && trimmedSearch.count < minimumSearchLength
-                            // Show skeletons only when actively searching AND no results yet
-                            let showSkeletons = !searchText.isEmpty && !isTooShort && searchResults.isEmpty && searchTask != nil
+                        let trimmedSearch = searchText.trimmingCharacters(in: .whitespaces)
+                        let isTooShort = !trimmedSearch.isEmpty && trimmedSearch.count < minimumSearchLength
+                        // Show skeletons only when actively searching AND no results yet
+                        let showSkeletons = !searchText.isEmpty && !isTooShort && searchResults.isEmpty && searchTask != nil
 
-                            if searchText.isEmpty {
-                                _buildRecentScansList()
-                                _buildRecentLoggedList()
-                                _buildRecentSearches()
-                            } else if isTooShort {
-                                // Show hint for short queries
+                        if searchText.isEmpty {
+                            _buildRecentScansList()
+                            _buildRecentLoggedList()
+                            _buildRecentSearches()
+                        } else if isTooShort {
+                            // Show hint for short queries
+                            borderlessCard {
                                 HStack {
                                     Image(systemName: "character.cursor.ibeam")
                                         .foregroundStyle(adaptiveSecondaryTextColor)
@@ -198,29 +198,28 @@ struct SearchScreen: View {
                                         .foregroundStyle(adaptiveSecondaryTextColor)
                                     Spacer()
                                 }
-                                .padding()
-                                .frame(maxWidth: .infinity)
-                                .background(cardBackground())
-                            } else {
-                                if showSkeletons {
-                                    VStack(spacing: 10) {
-                                        ForEach(0..<4, id: \.self) { _ in
-                                            skeletonRow()
-                                        }
+                            }
+                        } else {
+                            if showSkeletons {
+                                VStack(spacing: 10) {
+                                    ForEach(0..<4, id: \.self) { _ in
+                                        skeletonRow()
                                     }
-                                } else if !searchResults.isEmpty {
-                                    LazyVStack(spacing: 12) {
-                                        ForEach(searchResults) { result in
-                                            _buildSearchResultRow(result: result)
-                                                .transition(.opacity.combined(with: .move(edge: .bottom)))
-                                        }
-                                    }
-                                    .animation(.easeInOut(duration: 0.25), value: searchResults.count)
                                 }
+                            } else if !searchResults.isEmpty {
+                                LazyVStack(spacing: 12) {
+                                    ForEach(searchResults) { result in
+                                        _buildSearchResultRow(result: result)
+                                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                    }
+                                }
+                                .animation(.easeInOut(duration: 0.25), value: searchResults.count)
+                            }
 
-                                if let errorMessage {
-                                    Text(errorMessage).foregroundStyle(.red).padding(.top, 8)
-                                } else if searchResults.isEmpty && !showSkeletons {
+                            if let errorMessage {
+                                Text(errorMessage).foregroundStyle(.red).padding(.top, 8)
+                            } else if searchResults.isEmpty && !showSkeletons {
+                                borderlessCard {
                                     VStack(spacing: 8) {
                                         Image(systemName: "magnifyingglass")
                                             .font(.largeTitle)
@@ -231,6 +230,7 @@ struct SearchScreen: View {
                                             .font(.caption)
                                             .foregroundStyle(adaptiveSecondaryTextColor.opacity(0.7))
                                     }
+                                    .frame(maxWidth: .infinity)
                                     .padding(.vertical, 20)
                                 }
                             }
@@ -280,12 +280,15 @@ struct SearchScreen: View {
                 // Normalize slang terms (e.g., "maccas" → "McDonald's")
                 let capturedTerm = normalizeFoodSlang(trimmed)
 
+                // Store the original trimmed term for comparison
+                let originalTrimmed = trimmed
+
                 searchTask = Task {
                     // Debounce - wait for user to stop typing
-                    try await Task.sleep(nanoseconds: 250_000_000)
+                    try await Task.sleep(nanoseconds: 150_000_000)
 
-                    // Verify search term is still current after debounce
-                    guard !Task.isCancelled, capturedTerm == searchText.trimmingCharacters(in: .whitespaces) else {
+                    // Verify search term is still current after debounce (compare original, not normalized)
+                    guard !Task.isCancelled, originalTrimmed == searchText.trimmingCharacters(in: .whitespaces) else {
                         return
                     }
 
@@ -300,22 +303,15 @@ struct SearchScreen: View {
                         // Local CommonFood search with better matching
                         group.addTask {
                             let normalizedSearch = self.normalizeSearchString(capturedTerm)
-                            let searchWords = Set(normalizedSearch.split(separator: " ").map(String.init))
+
 
                             let filtered = commonFoods.filter { food in
                                 let normalizedName = self.normalizeSearchString(food.name)
 
-                                // Match if name contains query OR any query word matches
-                                if normalizedName.contains(normalizedSearch) {
-                                    return true
-                                }
-
-                                // Check if all query words appear in name
-                                let nameWords = Set(normalizedName.split(separator: " ").map(String.init))
-                                let matchingWords = searchWords.filter { queryWord in
-                                    nameWords.contains { $0.hasPrefix(queryWord) || $0.contains(queryWord) }
-                                }
-                                return matchingWords.count >= searchWords.count / 2 + 1
+                                // ENFORCED STRICT 95% ACCURACY
+                                // Only return cached items if they match the query with >= 95% similarity
+                                let similarity = self.calculateSimilarity(normalizedName, normalizedSearch)
+                                return similarity >= 0.95
                             }
                             return Array(filtered.prefix(30)).map { .commonFood($0) }
                         }
@@ -334,7 +330,7 @@ struct SearchScreen: View {
                     }
 
                     // Check if still valid before updating UI
-                    guard !Task.isCancelled, capturedTerm == searchText.trimmingCharacters(in: .whitespaces) else {
+                    guard !Task.isCancelled, originalTrimmed == searchText.trimmingCharacters(in: .whitespaces) else {
                         return
                     }
 
@@ -345,7 +341,7 @@ struct SearchScreen: View {
                     }
 
                     // Phase 2: API search (slightly delayed)
-                    guard !Task.isCancelled, capturedTerm == searchText.trimmingCharacters(in: .whitespaces) else {
+                    guard !Task.isCancelled, originalTrimmed == searchText.trimmingCharacters(in: .whitespaces) else {
                         await MainActor.run { searchTask = nil }
                         return
                     }
@@ -353,7 +349,7 @@ struct SearchScreen: View {
                     // Short delay before API call
                     try await Task.sleep(nanoseconds: 200_000_000)
 
-                    guard !Task.isCancelled, capturedTerm == searchText.trimmingCharacters(in: .whitespaces) else {
+                    guard !Task.isCancelled, originalTrimmed == searchText.trimmingCharacters(in: .whitespaces) else {
                         await MainActor.run { searchTask = nil }
                         return
                     }
@@ -362,7 +358,7 @@ struct SearchScreen: View {
                     do {
                         let products = try await apiService.searchFoodByName(capturedTerm, page: 1)
 
-                        guard !Task.isCancelled, capturedTerm == searchText.trimmingCharacters(in: .whitespaces) else {
+                        guard !Task.isCancelled, originalTrimmed == searchText.trimmingCharacters(in: .whitespaces) else {
                             await MainActor.run { searchTask = nil }
                             return
                         }
@@ -458,6 +454,8 @@ struct SearchScreen: View {
             "maccas": "McDonald's",
             "macca's": "McDonald's",
             "maccies": "McDonald's",
+            "macca": "McDonald's",
+            "macc": "McDonald's",
             "hungry jacks": "Burger King",
             "hj's": "Hungry Jack's",
             "kfc": "KFC",
@@ -1153,5 +1151,28 @@ struct SearchScreen: View {
     private func animateOrbs() {
         withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) { offset1 = CGSize(width: 80, height: 60) }
         withAnimation(.easeInOut(duration: 10).repeatForever(autoreverses: true)) { offset2 = CGSize(width: -100, height: -70) }
+    }
+    // MARK: - Accuracy Helpers
+    
+    nonisolated private func calculateSimilarity(_ source: String, _ target: String) -> Double {
+        if source == target { return 1.0 }
+        let distance = levenshteinDist(source, target)
+        let maxLength = max(source.count, target.count)
+        guard maxLength > 0 else { return 1.0 }
+        return 1.0 - (Double(distance) / Double(maxLength))
+    }
+
+    nonisolated private func levenshteinDist(_ s1: String, _ s2: String) -> Int {
+        let empty = [Int](repeating: 0, count: s2.count)
+        var last = [Int](0...s2.count)
+
+        for (i, char1) in s1.enumerated() {
+            var cur = [i + 1] + empty
+            for (j, char2) in s2.enumerated() {
+                cur[j + 1] = char1 == char2 ? last[j] : min(last[j], last[j + 1], cur[j]) + 1
+            }
+            last = cur
+        }
+        return last.last ?? 0
     }
 }

@@ -43,7 +43,7 @@ struct GoalsToAccomplishPage: View {
 
                 ContinueButton(
                     title: "Continue",
-                    isEnabled: flowManager.canProceed(for: 11),
+                    isEnabled: flowManager.canProceed() && !flowManager.isNavigating,
                     action: { flowManager.goNext() }
                 )
             }

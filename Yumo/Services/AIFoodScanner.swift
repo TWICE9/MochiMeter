@@ -19,7 +19,6 @@ actor AIFoodScanner {
 
     /// Analyzes a food image using GPT-4o Mini and returns nutrition data
     func analyzeFood(image: UIImage) async throws -> FoodAnalysisResult {
-        print("📸 Starting AI food analysis...")
 
         // 1. Resize image for faster upload (max 1024px on longest side)
         let resizedImage = image.resized(toMaxDimension: 1024)
@@ -30,7 +29,6 @@ actor AIFoodScanner {
         }
 
         let base64String = imageData.base64EncodedString()
-        print("📦 Image resized and compressed to \(imageData.count / 1024)KB")
 
         // 2. Call Supabase Edge Function
         let requestBody: [String: Any] = ["imageBase64": base64String]
@@ -38,16 +36,11 @@ actor AIFoodScanner {
             throw FoodScanError.invalidRequest
         }
 
-        print("🚀 Calling analyze-food edge function...")
 
         let response: FoodAnalysisResult = try await analyzeWithRetry(body: jsonData, functionName: "analyze-food")
 
-        print("✅ Received response from edge function")
-
         // 3. Return the parsed result
         let result = response
-
-        print("🎯 Analysis complete: \(result.name) - \(result.calories) cal")
 
         return result
     }
@@ -59,18 +52,14 @@ actor AIFoodScanner {
             throw FoodScanError.invalidRequest
         }
 
-        print("📝 Starting AI meal text analysis...")
-
         let requestBody: [String: Any] = ["description": trimmed]
         guard let jsonData = try? JSONSerialization.data(withJSONObject: requestBody) else {
             throw FoodScanError.invalidRequest
         }
 
-        print("🚀 Calling analyze-meal-text edge function...")
         // Text analysis is faster - use shorter timeout and single retry
         let response: FoodAnalysisResult = try await analyzeWithRetry(body: jsonData, functionName: "analyze-meal-text", timeout: 10, maxAttempts: 1)
 
-        print("✅ Meal text analysis complete for \(response.name)")
         return response
     }
     

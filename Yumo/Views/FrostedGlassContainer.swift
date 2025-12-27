@@ -3,21 +3,26 @@
 import SwiftUI
 
 struct FrostedGlassContainer<Content: View>: View {
-    
     let content: Content
+    private let clipsContent: Bool
     
     private let borderRadius: CGFloat = 20.0
     private let padding: CGFloat = 16.0
     private let borderColor = Color.white.opacity(0.2)
     
-    init(@ViewBuilder content: () -> Content) {
+    init(clipsContent: Bool = true, @ViewBuilder content: () -> Content) {
+        self.clipsContent = clipsContent
         self.content = content()
     }
     
+    private var containerShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: borderRadius)
+    }
+    
+    @ViewBuilder
     var body: some View {
-        ZStack {
-            // The blur effect (now the main background)
-            RoundedRectangle(cornerRadius: borderRadius)
+        let base = ZStack {
+            containerShape
                 .fill(.ultraThinMaterial)
             
             // ⭐️ REMOVED ⭐️
@@ -27,6 +32,13 @@ struct FrostedGlassContainer<Content: View>: View {
             content
                 .padding(padding)
         }
-        .clipShape(RoundedRectangle(cornerRadius: borderRadius))
+        .contentShape(containerShape)
+        
+        if clipsContent {
+            base
+                .clipShape(containerShape)
+        } else {
+            base
+        }
     }
 }

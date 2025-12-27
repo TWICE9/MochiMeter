@@ -15,6 +15,7 @@ struct SettingsScreen: View {
     @EnvironmentObject var authManager: AuthManager
     @EnvironmentObject var fastingManager: FastingManager
     @EnvironmentObject var shoppingListVM: ShoppingListViewModel
+    @EnvironmentObject var superwallManager: SuperwallManager
     @Environment(\.colorScheme) private var colorScheme
 
     // State
@@ -220,6 +221,64 @@ struct SettingsScreen: View {
                             .padding(.horizontal, 24)
                         }
 
+                        // MARK: - LOCK SCREEN WIDGETS SHOWCASE
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("Lock Screen Widgets")
+                                .font(.title3).bold()
+                                .foregroundStyle(primaryTextColor)
+                                .padding(.horizontal, 24)
+
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 16) {
+                                    // Circular Calorie Widget Preview
+                                    VStack(spacing: 8) {
+                                        LockScreenCircularWidgetPreview()
+                                        Text("Calories")
+                                            .font(.caption.weight(.medium))
+                                            .foregroundStyle(secondaryTextColor)
+                                    }
+
+                                    // Rectangular Calorie Widget Preview
+                                    VStack(spacing: 8) {
+                                        LockScreenRectangularWidgetPreview()
+                                        Text("Daily Summary")
+                                            .font(.caption.weight(.medium))
+                                            .foregroundStyle(secondaryTextColor)
+                                    }
+
+                                    // Circular Scan Widget Preview
+                                    VStack(spacing: 8) {
+                                        LockScreenScanWidgetPreview()
+                                        Text("Quick Scan")
+                                            .font(.caption.weight(.medium))
+                                            .foregroundStyle(secondaryTextColor)
+                                    }
+                                }
+                                .padding(.horizontal, 24)
+                            }
+
+                            // How to add lock screen widgets tip
+                            FrostedGlassContainer {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "lock.fill")
+                                        .foregroundStyle(.cyan)
+                                        .font(.title3)
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Add widgets to your Lock Screen")
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundStyle(primaryTextColor)
+                                        Text("Long press Lock Screen → Customize → tap widgets area → find \"MochiMeter\"")
+                                            .font(.caption)
+                                            .foregroundStyle(secondaryTextColor)
+                                    }
+
+                                    Spacer()
+                                }
+                            }
+                            .padding(.horizontal, 24)
+                        }
+
                         // MARK: - APPEARANCE
                         VStack(alignment: .leading, spacing: 16) {
                             Text("Appearance")
@@ -302,17 +361,46 @@ struct SettingsScreen: View {
                                 if notificationStatus == .authorized {
                                     Divider().background(cardBorderColor)
 
-                                    VStack(alignment: .leading, spacing: 8) {
+                                    VStack(alignment: .leading, spacing: 16) {
+                                        // Meal Reminders Toggle
                                         HStack {
-                                            Image(systemName: "flame.fill")
-                                                .foregroundStyle(Color("AppSecondaryAccent"))
-                                            Text("Meal Reminders")
-                                                .font(.headline)
-                                                .foregroundStyle(primaryTextColor)
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                HStack {
+                                                    Image(systemName: "fork.knife")
+                                                        .foregroundStyle(Color("AppSecondaryAccent"))
+                                                    Text("Meal Reminders")
+                                                        .font(.headline)
+                                                        .foregroundStyle(primaryTextColor)
+                                                }
+                                                Text("Receive reminders every 4 hours (7am-9pm) to help you stay on track with logging your meals.")
+                                                    .font(.caption)
+                                                    .foregroundStyle(secondaryTextColor)
+                                            }
+                                            Spacer()
+                                            Toggle("", isOn: $bindableGoals.mealRemindersEnabled)
+                                                .labelsHidden()
                                         }
-                                        Text("Receive reminders every 4 hours (7am-9pm) to help you stay on track with logging your meals.")
-                                            .font(.caption)
-                                            .foregroundStyle(secondaryTextColor)
+
+                                        Divider().background(cardBorderColor)
+
+                                        // Weekly Weight Reminder Toggle
+                                        HStack {
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                HStack {
+                                                    Image(systemName: "figure.stand.line.dotted.figure.stand")
+                                                        .foregroundStyle(Color("AppSecondaryAccent"))
+                                                    Text("Weekly Weight Check-In")
+                                                        .font(.headline)
+                                                        .foregroundStyle(primaryTextColor)
+                                                }
+                                                Text("Get reminded every Monday at 9 AM to log your weight for the week.")
+                                                    .font(.caption)
+                                                    .foregroundStyle(secondaryTextColor)
+                                            }
+                                            Spacer()
+                                            Toggle("", isOn: $bindableGoals.weeklyWeightReminderEnabled)
+                                                .labelsHidden()
+                                        }
                                     }
                                 }
                             }
@@ -470,7 +558,7 @@ struct SettingsScreen: View {
 
                             // Upload existing goals to cloud
                             if let goals = goals {
-                                goals.userId = user.id.uuidString
+                                goals.userId = user.id.uuidString.lowercased()
                                 try? modelContext.save()
                                 await authManager.uploadOnboardingToCloud(goals: goals)
                             }
@@ -508,16 +596,22 @@ struct SettingsScreen: View {
         // Get the first window scene
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
 
+        let style: UIUserInterfaceStyle
+        switch mode {
+        case .system:
+            style = .unspecified
+        case .light:
+            style = .light
+        case .dark:
+            style = .dark
+        }
+        
+        // Notify Superwall Manager
+        superwallManager.setAppearance(style)
+
         // Apply the appearance to all windows in the scene
         for window in windowScene.windows {
-            switch mode {
-            case .system:
-                window.overrideUserInterfaceStyle = .unspecified
-            case .light:
-                window.overrideUserInterfaceStyle = .light
-            case .dark:
-                window.overrideUserInterfaceStyle = .dark
-            }
+            window.overrideUserInterfaceStyle = style
         }
     }
 
@@ -823,7 +917,7 @@ struct SettingsScreen: View {
                                             await authManager.completeSignIn(user: user, modelContext: modelContext)
 
                                             if let goals = goals {
-                                                goals.userId = user.id.uuidString
+                                                goals.userId = user.id.uuidString.lowercased()
                                                 try? modelContext.save()
                                                 await authManager.uploadOnboardingToCloud(goals: goals)
                                             }
@@ -933,25 +1027,37 @@ struct SettingsScreen: View {
     private func _buildDynamicBackground() -> some View {
         ZStack {
             Color("AppPrimaryDark", bundle: nil).ignoresSafeArea()
-            RadialGradient(
-                gradient: Gradient(colors: [Color("AppSecondaryAccent").opacity(0.3), .clear]),
-                center: .topLeading,
-                startRadius: 50,
-                endRadius: 450
-            )
-            .offset(offset1)
-            .offset(x: -150, y: -150)
-            .ignoresSafeArea()
+            if colorScheme == .light {
+                RadialGradient(
+                    gradient: Gradient(colors: [Color("AppSecondaryAccent").opacity(0.3), .clear]),
+                    center: .topLeading,
+                    startRadius: 50,
+                    endRadius: 450
+                )
+                .offset(offset1)
+                .offset(x: -150, y: -150)
+                .ignoresSafeArea()
 
-            RadialGradient(
-                gradient: Gradient(colors: [Color("AppPrimaryAccent").opacity(0.4), .clear]),
-                center: .bottomTrailing,
-                startRadius: 100,
-                endRadius: 500
-            )
-            .offset(offset2)
-            .offset(x: 100, y: 150)
-            .ignoresSafeArea()
+                RadialGradient(
+                    gradient: Gradient(colors: [Color("AppPrimaryAccent").opacity(0.4), .clear]),
+                    center: .bottomTrailing,
+                    startRadius: 100,
+                    endRadius: 500
+                )
+                .offset(offset2)
+                .offset(x: 100, y: 150)
+                .ignoresSafeArea()
+            } else {
+                // Subtle Dark Mode Lighting - Matched to Home Screen
+                RadialGradient(gradient: Gradient(colors: [Color.white.opacity(0.15), .clear]), center: .topLeading, startRadius: 50, endRadius: 500)
+                    .offset(offset1).offset(x: -100, y: -100).ignoresSafeArea()
+                
+                RadialGradient(gradient: Gradient(colors: [Color.white.opacity(0.08), .clear]), center: .bottomTrailing, startRadius: 50, endRadius: 450)
+                    .offset(offset2).offset(x: 100, y: 100).ignoresSafeArea()
+                
+                RadialGradient(gradient: Gradient(colors: [Color.white.opacity(0.06), .clear]), center: .bottomLeading, startRadius: 60, endRadius: 350)
+                    .offset(offset1).offset(x: -50, y: 120).ignoresSafeArea()
+            }
         }
         .blur(radius: 60)
         .onAppear { animateOrbs() }
@@ -1212,6 +1318,120 @@ struct ScanWidgetPreview: View {
                 .stroke(colorScheme == .dark ? Color.white.opacity(0.1) : Color.black.opacity(0.05), lineWidth: 0.5)
         )
         .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
+    }
+}
+
+// MARK: - Lock Screen Widget Previews
+
+/// Circular calorie gauge widget preview (mimics iOS lock screen monochrome style)
+struct LockScreenCircularWidgetPreview: View {
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        ZStack {
+            // Background circle (iOS tinted glass effect)
+            Circle()
+                .fill(Color.white.opacity(0.15))
+            
+            // Track ring
+            Circle()
+                .stroke(Color.white.opacity(0.3), lineWidth: 5)
+                .padding(6)
+            
+            // Progress arc
+            Circle()
+                .trim(from: 0, to: 0.65)
+                .stroke(
+                    Color.white,
+                    style: StrokeStyle(lineWidth: 5, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+                .padding(6)
+            
+            // Center text
+            VStack(spacing: 0) {
+                Text("735")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                Text("left")
+                    .font(.system(size: 7, weight: .medium))
+                    .foregroundColor(.white.opacity(0.7))
+            }
+        }
+        .frame(width: 56, height: 56)
+    }
+}
+
+/// Rectangular calorie widget preview (mimics iOS lock screen monochrome style)
+struct LockScreenRectangularWidgetPreview: View {
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            // Calories row
+            HStack {
+                Text("Calories:")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.white)
+                Spacer()
+                Text("1,365 / 2,100")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white)
+            }
+            
+            // Progress bar (monochrome)
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.3))
+                        .frame(height: 3)
+                    
+                    Rectangle()
+                        .fill(Color.white)
+                        .frame(width: geometry.size.width * 0.65, height: 3)
+                }
+            }
+            .frame(height: 3)
+            
+            // Macros row (all white, no colors)
+            HStack(spacing: 10) {
+                lockMacro("C", 45)
+                lockMacro("P", 32)
+                lockMacro("F", 18)
+            }
+        }
+        .padding(10)
+        .frame(width: 160, height: 56)
+        .background(Color.white.opacity(0.15))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+    
+    private func lockMacro(_ label: String, _ value: Int) -> some View {
+        HStack(spacing: 2) {
+            Text(label)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(.white.opacity(0.7))
+            Text("\(value)g")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundColor(.white)
+        }
+    }
+}
+
+/// Circular scan widget preview (mimics iOS lock screen monochrome style)
+struct LockScreenScanWidgetPreview: View {
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(Color.white.opacity(0.15))
+            
+            Image(systemName: "barcode.viewfinder")
+                .font(.system(size: 24, weight: .medium))
+                .foregroundColor(.white)
+        }
+        .frame(width: 56, height: 56)
     }
 }
 

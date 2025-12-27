@@ -30,9 +30,11 @@ struct DietTypePage: View {
                         emoji: emoji,
                         isSelected: flowManager.dietType == diet,
                         action: {
+                            guard !flowManager.isNavigating else { return }
                             flowManager.dietType = diet
                             // Auto-advance after short delay
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                guard !flowManager.isNavigating else { return }
                                 flowManager.goNext()
                             }
                         }

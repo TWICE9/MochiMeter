@@ -56,6 +56,7 @@ struct FoodLogDetailView: View {
     @State private var showFixSheet = false
     @State private var isFixing = false
     @State private var fixError: String?
+    @State private var isNameExpanded = false
     @ObservedObject private var superwallManager = SuperwallManager.shared
 
     var body: some View {
@@ -260,7 +261,7 @@ struct FoodLogDetailView: View {
     @ViewBuilder
     private func _buildHeroHeader() -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Image only
+            // Image only - no placeholder if no photo
             if let image = displayImage {
                 Image(uiImage: image)
                     .resizable()
@@ -277,66 +278,8 @@ struct FoodLogDetailView: View {
                     )
                     .ignoresSafeArea(edges: .top)
             } else {
-                let placeholderColors: [Color] = colorScheme == .light
-                    ? [Color.gray.opacity(0.45), Color.gray.opacity(0.12)]
-                    : [Color.gray.opacity(0.3), Color.gray.opacity(0.15)]
-                let iconOpacity = colorScheme == .light ? 0.04 : 0.06
-
-                GeometryReader { geo in
-                    ZStack {
-                        LinearGradient(
-                            colors: placeholderColors,
-                            startPoint: colorScheme == .light ? .top : .bottom,
-                            endPoint: colorScheme == .light ? .bottom : .top
-                        )
-
-                        // Scattered food icons
-                        Image("food-icon-1")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 60, height: 60)
-                            .opacity(iconOpacity)
-                            .position(x: geo.size.width * 0.15, y: geo.size.height * 0.25)
-
-                        Image("food-icon-2")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 80, height: 80)
-                            .opacity(iconOpacity)
-                            .position(x: geo.size.width * 0.75, y: geo.size.height * 0.15)
-
-                        Image("food-icon-3")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 100, height: 100)
-                            .opacity(iconOpacity)
-                            .position(x: geo.size.width * 0.5, y: geo.size.height * 0.5)
-
-                        Image("food-icon-4")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 50, height: 50)
-                            .opacity(iconOpacity)
-                            .position(x: geo.size.width * 0.85, y: geo.size.height * 0.65)
-
-                        Image("food-icon-5")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 70, height: 70)
-                            .opacity(iconOpacity)
-                            .position(x: geo.size.width * 0.2, y: geo.size.height * 0.75)
-                    }
-                }
-                .frame(height: 500)
-                .clipShape(
-                    UnevenRoundedRectangle(
-                        topLeadingRadius: 0,
-                        bottomLeadingRadius: 24,
-                        bottomTrailingRadius: 24,
-                        topTrailingRadius: 0
-                    )
-                )
-                .ignoresSafeArea(edges: .top)
+                // Add top spacing for safe area when no image
+                Spacer().frame(height: 100)
             }
 
             // All details below the image
@@ -344,7 +287,12 @@ struct FoodLogDetailView: View {
                 Text(log.name)
                     .font(.largeTitle).bold()
                     .foregroundStyle(Color("AppTextPrimary"))
-                    .lineLimit(2)
+                    .lineLimit(isNameExpanded ? nil : 2)
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isNameExpanded.toggle()
+                        }
+                    }
 
                 if let brand = log.brand, !brand.isEmpty {
                     Text(brand)
@@ -612,42 +560,35 @@ struct FoodLogDetailView: View {
 
     @ViewBuilder
     private func _buildContributionSection() -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Contribution to Daily Goals")
+        VStack(alignment: .leading, spacing: 14) {
+            Text("% of Daily Goals")
                 .font(.headline)
                 .foregroundStyle(adaptiveTextColor)
-                .frame(maxWidth: .infinity, alignment: .leading)
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                ContributionStatCard(
-                    icon: "flame.fill",
-                    label: "Calories",
-                    value: Int(log.totalCalories),
-                    goal: Int(goals.dailyCalories),
-                    color: colorScheme == .light ? Color(red: 0.95, green: 0.6, blue: 0.4) : .orange
-                )
-                ContributionStatCard(
-                    icon: "leaf.fill",
-                    label: "Carbs",
-                    value: Int(log.totalCarbs),
-                    goal: Int(goals.dailyCarbs),
-                    color: Color("AppSecondaryAccent")
-                )
-                ContributionStatCard(
-                    icon: "fork.knife",
-                    label: "Protein",
-                    value: Int(log.totalProtein),
-                    goal: Int(goals.dailyProtein),
-                    color: .pink
-                )
-                ContributionStatCard(
-                    icon: "drop.fill",
-                    label: "Fat",
-                    value: Int(log.totalFat),
-                    goal: Int(goals.dailyFat),
-                    color: .orange.opacity(0.8)
-                )
-            }
+            ContributionRow(
+                label: "Calories",
+                value: Int(log.totalCalories),
+                goal: Int(goals.dailyCalories),
+                color: colorScheme == .light ? Color(red: 0.95, green: 0.6, blue: 0.4) : .orange
+            )
+            ContributionRow(
+                label: "Protein",
+                value: Int(log.totalProtein),
+                goal: Int(goals.dailyProtein),
+                color: .pink
+            )
+            ContributionRow(
+                label: "Carbs",
+                value: Int(log.totalCarbs),
+                goal: Int(goals.dailyCarbs),
+                color: Color("AppSecondaryAccent")
+            )
+            ContributionRow(
+                label: "Fat",
+                value: Int(log.totalFat),
+                goal: Int(goals.dailyFat),
+                color: .orange.opacity(0.8)
+            )
         }
         .padding()
         .background(cardBackgroundColor)
@@ -714,8 +655,7 @@ struct MacroStatCard: View {
     }
 }
 
-struct ContributionStatCard: View {
-    let icon: String
+struct ContributionRow: View {
     let label: String
     let value: Int
     let goal: Int
@@ -731,12 +671,8 @@ struct ContributionStatCard: View {
         colorScheme == .dark ? .white.opacity(0.7) : Color(red: 60/255, green: 60/255, blue: 67/255)
     }
 
-    private var cardBackground: Color {
-        colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.04)
-    }
-
     private var progressBarBackground: Color {
-        colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.08)
+        colorScheme == .dark ? Color.white.opacity(0.1) : Color.black.opacity(0.06)
     }
 
     private var progress: Double {
@@ -744,42 +680,35 @@ struct ContributionStatCard: View {
         return min(Double(value) / Double(goal), 1.0)
     }
 
+    private var percentage: Int {
+        guard goal > 0 else { return 0 }
+        return Int((Double(value) / Double(goal)) * 100)
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                ZStack {
-                    Circle()
-                        .fill(color.opacity(0.2))
-                        .frame(width: 36, height: 36)
-                    Image(systemName: icon)
-                        .font(.system(size: 16))
-                        .foregroundColor(color)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(label)
-                        .font(.caption)
-                        .foregroundColor(adaptiveSecondaryTextColor)
-                    Text("\(value)/\(goal)")
-                        .font(.headline)
-                        .foregroundColor(adaptiveTextColor)
-                }
-            }
+        HStack(spacing: 12) {
+            Text(label)
+                .font(.subheadline)
+                .foregroundColor(adaptiveSecondaryTextColor)
+                .frame(width: 65, alignment: .leading)
 
             GeometryReader { geo in
                 Capsule()
                     .fill(progressBarBackground)
-                    .frame(height: 8)
+                    .frame(height: 10)
                     .overlay(
                         Capsule()
                             .fill(color)
-                            .frame(width: geo.size.width * progress, height: 8),
+                            .frame(width: geo.size.width * progress, height: 10),
                         alignment: .leading
                     )
             }
-            .frame(height: 8)
+            .frame(height: 10)
+
+            Text("\(percentage)%")
+                .font(.subheadline.bold())
+                .foregroundColor(adaptiveTextColor)
+                .frame(width: 45, alignment: .trailing)
         }
-        .padding(12)
-        .background(cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 }

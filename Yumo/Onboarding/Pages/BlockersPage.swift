@@ -44,7 +44,7 @@ struct BlockersPage: View {
 
                 ContinueButton(
                     title: "Continue",
-                    isEnabled: flowManager.canProceed(for: 9),
+                    isEnabled: flowManager.canProceed() && !flowManager.isNavigating,
                     action: { flowManager.goNext() }
                 )
             }

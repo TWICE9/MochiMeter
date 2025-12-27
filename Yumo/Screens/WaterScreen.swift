@@ -35,114 +35,109 @@ struct WaterScreen: View {
                 Color("AppPrimaryDark").ignoresSafeArea()
                 _buildDynamicBackground()
                 
-                ScrollView {
-                    VStack(spacing: 24) {
+                VStack(spacing: 24) {
+                    
+                    // --- 1. Header (Content Title) ---
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Stay Hydrated")
+                            .font(.title2)
+                            .fontWeight(.medium)
+                            .foregroundColor(Color("AppTextPrimary").opacity(0.8))
                         
-                        // --- 1. Header (Content Title) ---
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Stay Hydrated")
-                                .font(.title2)
-                                .fontWeight(.medium)
-                                .foregroundColor(Color("AppTextPrimary").opacity(0.8))
-                            
-                            Text("Your Daily Water")
-                                .font(.largeTitle)
-                                .fontWeight(.bold)
-                                .foregroundColor(Color("AppTextPrimary"))
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 24)
-                        .padding(.top, 40)
+                        Text("Your Daily Water")
+                            .font(.largeTitle)
+                            .fontWeight(.bold)
+                            .foregroundColor(Color("AppTextPrimary"))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 20)
+                    
+                    Spacer()
+                    
+                    // --- 2. Animated Water Cup ---
+                    ZStack {
+                        WaterCupShape()
+                            .stroke(Color("AppTextPrimary").opacity(0.2), lineWidth: 6)
                         
-                        // --- 2. Animated Water Cup ---
-                        ZStack {
-                            WaterCupShape()
-                                .stroke(Color("AppTextPrimary").opacity(0.2), lineWidth: 6)
-                            
-                            WaterCupShape()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [
-                                            Color("AppSecondaryAccent").opacity(0.8),
-                                            Color("AppSecondaryAccent")
-                                        ],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    )
+                        WaterCupShape()
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color("AppSecondaryAccent").opacity(0.8),
+                                        Color("AppSecondaryAccent")
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
                                 )
-                                .mask {
-                                    // Wave Animation
-                                    TimelineView(.animation(minimumInterval: 0.025)) { context in
-                                        GeometryReader { geo in
-                                            let time = context.date.timeIntervalSinceReferenceDate
-                                            let amplitude: CGFloat = 8
-                                            let frequency: CGFloat = 15
-                                            let phase = -time.truncatingRemainder(dividingBy: 2) * .pi
-                                            let waterLevel = max(geo.size.height * (1.0 - fillPercentage), 0)
-                                                
-                                            Path { path in
-                                                path.move(to: CGPoint(x: 0, y: geo.size.height))
-                                                for x in stride(from: 0, through: geo.size.width, by: 1) {
-                                                    let relativeX = x / frequency
-                                                    let sine = sin(relativeX + phase)
-                                                    let y = waterLevel + (sine * amplitude)
-                                                    path.addLine(to: CGPoint(x: x, y: y))
-                                                }
-                                                path.addLine(to: CGPoint(x: geo.size.width, y: waterLevel))
-                                                path.addLine(to: CGPoint(x: geo.size.width, y: geo.size.height))
-                                                path.closeSubpath()
+                            )
+                            .mask {
+                                // Wave Animation
+                                TimelineView(.animation(minimumInterval: 0.025)) { context in
+                                    GeometryReader { geo in
+                                        let time = context.date.timeIntervalSinceReferenceDate
+                                        let amplitude: CGFloat = 8
+                                        let frequency: CGFloat = 15
+                                        let phase = -time.truncatingRemainder(dividingBy: 2) * .pi
+                                        let waterLevel = max(geo.size.height * (1.0 - fillPercentage), 0)
+                                            
+                                        Path { path in
+                                            path.move(to: CGPoint(x: 0, y: geo.size.height))
+                                            for x in stride(from: 0, through: geo.size.width, by: 1) {
+                                                let relativeX = x / frequency
+                                                let sine = sin(relativeX + phase)
+                                                let y = waterLevel + (sine * amplitude)
+                                                path.addLine(to: CGPoint(x: x, y: y))
                                             }
+                                            path.addLine(to: CGPoint(x: geo.size.width, y: waterLevel))
+                                            path.addLine(to: CGPoint(x: geo.size.width, y: geo.size.height))
+                                            path.closeSubpath()
                                         }
                                     }
                                 }
-                        }
-                        .frame(width: 200, height: 300)
-                        .animation(.easeInOut(duration: 0.6), value: fillPercentage)
-                        
-                        // --- 3. Water Log Button (with pulse) ---
-                        Button { logWater() } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "plus")
-                                Text("Log \(Int(goals.waterCupSizeML)) mL")
                             }
-                            .font(.headline).bold().foregroundColor(.black)
-                            .padding().frame(maxWidth: 250)
-                            .background(
-                                // ⭐️ FIX: Removed the ZStack and pulsing Circle ⭐️
-                                Color("AppSecondaryAccent") // Base color
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 16))
-                        }
-                        .buttonStyle(.plain)
-                        
-                        // ⭐️ FIX: Removed .onAppear and .onDisappear modifiers for pulsing ⭐️
-                        
-                        // --- "REMOVE" BUTTON ---
-                        Button { removeLastWater() } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "arrow.uturn.backward").font(.subheadline)
-                                Text("Remove Last Cup").font(.headline)
-                            }
-                            .foregroundStyle(waterLogsToday.isEmpty ? .gray : Color("AppTextPrimary").opacity(0.8))
-                            .padding().frame(maxWidth: 250)
-                            .background(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .stroke(waterLogsToday.isEmpty ? .gray.opacity(0.5) : Color("AppTextPrimary").opacity(0.5), lineWidth: 2)
-                            )
-                        }
-                        .disabled(waterLogsToday.isEmpty).animation(.default, value: waterLogsToday.isEmpty)
-                        
-                        Text("\(Int(totalWaterToday)) of \(Int(goals.dailyWaterML)) mL")
-                            .font(.title3).bold().foregroundStyle(Color("AppTextPrimary"))
-                        
-                        Spacer()
                     }
-                    // ⭐️ FIX: Add padding to the bottom of the VStack ⭐️
-                    // This was missing and would cause the content to be cut off
-                    .padding(.bottom, 100)
+                    .frame(width: 200, height: 300)
+                    .animation(.easeInOut(duration: 0.6), value: fillPercentage)
+                    
+                    Spacer()
+                    
+                    // --- 3. Water Log Button ---
+                    Button { logWater() } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "plus")
+                            Text("Log \(Int(goals.waterCupSizeML)) mL")
+                        }
+                        .font(.headline).bold().foregroundColor(.black)
+                        .padding()
+                        .frame(maxWidth: 250)
+                        .background(Color("AppSecondaryAccent"))
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                    }
+                    .buttonStyle(.plain)
+                    
+                    // --- "REMOVE" BUTTON ---
+                    Button { removeLastWater() } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrow.uturn.backward").font(.subheadline)
+                            Text("Remove Last Cup").font(.headline)
+                        }
+                        .foregroundStyle(waterLogsToday.isEmpty ? .gray : Color("AppTextPrimary").opacity(0.8))
+                        .padding()
+                        .frame(maxWidth: 250)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(waterLogsToday.isEmpty ? .gray.opacity(0.5) : Color("AppTextPrimary").opacity(0.5), lineWidth: 2)
+                        )
+                    }
+                    .disabled(waterLogsToday.isEmpty)
+                    .animation(.default, value: waterLogsToday.isEmpty)
+                    
+                    Text("\(Int(totalWaterToday)) of \(Int(goals.dailyWaterML)) mL")
+                        .font(.title3).bold().foregroundStyle(Color("AppTextPrimary"))
+                    
+                    Spacer()
                 }
-                .scrollContentBackground(.hidden)
-                .padding(.top, -40) // Counteract system padding
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -150,7 +145,7 @@ struct WaterScreen: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.title)
+                            .font(.title2)
                             .foregroundStyle(Color("AppTextPrimary").opacity(0.6))
                     }
                 }
@@ -196,6 +191,9 @@ struct WaterScreen: View {
             if let userId = userId {
                 await CloudSyncManager.shared.uploadWaterLogImmediately(newLog, userId: userId)
             }
+            
+            // Track analytics
+            AnalyticsManager.shared.trackWaterLogged(amountML: validatedAmount)
         }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         WidgetCenter.shared.reloadAllTimelines()

@@ -63,6 +63,9 @@ class AppNotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotificati
 
         // Configure Google Sign-In
         configureGoogleSignIn()
+        
+        // Initialize PostHog Analytics
+        AnalyticsManager.shared.configure()
 
         return true
     }
@@ -155,6 +158,11 @@ struct YumoApp: App {
                     )
                 }
 
+                // Migrate existing users to have weeklyWeightChangeKg default
+                .task {
+                    await migrateWeeklyWeightChangeKg()
+                }
+
                 // Handle deep links at App level
                 .onOpenURL { url in
                     print("🔗 YumoApp onOpenURL received: \(url.absoluteString)")
@@ -172,15 +180,34 @@ struct YumoApp: App {
         await MainActor.run {
             guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
 
+            let style: UIUserInterfaceStyle
+            switch goals.appearanceMode {
+            case .system: style = .unspecified
+            case .light: style = .light
+            case .dark: style = .dark
+            }
+            
+            // Sync with Superwall Manager so new windows inherit this
+            superwallManager.setAppearance(style)
+
             for window in windowScene.windows {
-                switch goals.appearanceMode {
-                case .system:
-                    window.overrideUserInterfaceStyle = .unspecified
-                case .light:
-                    window.overrideUserInterfaceStyle = .light
-                case .dark:
-                    window.overrideUserInterfaceStyle = .dark
-                }
+                window.overrideUserInterfaceStyle = style
+            }
+        }
+    }
+
+    // Migrate existing users who have weeklyWeightChangeKg = 0 (default before feature existed)
+    private func migrateWeeklyWeightChangeKg() async {
+        guard let goals = await UserScopedQuery.fetchUserGoals(context: container.mainContext) else {
+            return
+        }
+
+        // If weeklyWeightChangeKg is 0 or below minimum, set to default 0.5
+        if goals.weeklyWeightChangeKg < 0.1 {
+            await MainActor.run {
+                goals.weeklyWeightChangeKg = 0.5
+                try? container.mainContext.save()
+                print("📊 Migrated weeklyWeightChangeKg to default 0.5 for existing user")
             }
         }
     }

@@ -44,15 +44,17 @@ struct HealthCalculator {
     }
     
     /// Calculates target calories and macros
+    /// - Parameter weeklyWeightChangeKg: For weight loss/gain, the weekly target in kg (e.g., 0.5 = lose/gain 0.5kg/week)
     static func calculateDailyGoals(
         gender: Gender,
         weightKg: Double,
         heightCm: Double,
         age: Int,
         activityLevel: ActivityLevel,
-        weightGoal: GoalType
+        weightGoal: GoalType,
+        weeklyWeightChangeKg: Double = 0.5
     ) -> CalculatedGoals {
-        
+
         let tdee = calculateTDEE(
             gender: gender,
             weightKg: weightKg,
@@ -60,8 +62,23 @@ struct HealthCalculator {
             age: age,
             activityLevel: activityLevel
         )
-        
-        let targetCalories = tdee + weightGoal.calorieAdjustment
+
+        // Calculate calorie adjustment based on weekly weight change rate
+        // 1 kg of body fat ≈ 7700 calories
+        // Daily adjustment = (weeklyRate * 7700) / 7
+        let calorieAdjustment: Double
+        switch weightGoal {
+        case .lose:
+            // Deficit: negative adjustment
+            calorieAdjustment = -(weeklyWeightChangeKg * 7700 / 7)
+        case .maintain:
+            calorieAdjustment = 0
+        case .gain:
+            // Surplus: positive adjustment (use smaller multiplier for lean gains)
+            calorieAdjustment = weeklyWeightChangeKg * 7700 / 7 * 0.5  // ~50% for lean muscle gain
+        }
+
+        let targetCalories = tdee + calorieAdjustment
         
         let proteinGrams = weightKg * 1.8
         let proteinCalories = proteinGrams * 4

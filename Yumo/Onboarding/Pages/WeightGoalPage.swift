@@ -29,9 +29,11 @@ struct WeightGoalPage: View {
                         emoji: emoji,
                         isSelected: flowManager.weightGoal == goal,
                         action: {
+                            guard !flowManager.isNavigating else { return }
                             flowManager.weightGoal = goal
                             // Auto-advance after short delay
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                guard !flowManager.isNavigating else { return }
                                 flowManager.goNext()
                             }
                         }

@@ -86,6 +86,9 @@ class FastingManager: ObservableObject {
                 self.currentLog = newLog
                 startTimer()
                 scheduleNotification(for: goalHours)
+                
+                // Track analytics
+                AnalyticsManager.shared.trackFastStarted(goalHours: goalHours)
             }
         }
     }
@@ -98,6 +101,8 @@ class FastingManager: ObservableObject {
 
         log.endTime = Date()
         let userId = log.userId
+        let durationHours = timeElapsed / 3600
+        let completed = durationHours >= log.goalDuration / 3600
 
         try? modelContext.save()
 
@@ -107,6 +112,9 @@ class FastingManager: ObservableObject {
                 await CloudSyncManager.shared.uploadFastingLogImmediately(log, userId: userId)
             }
         }
+        
+        // Track analytics
+        AnalyticsManager.shared.trackFastEnded(durationHours: durationHours, completed: completed)
 
         self.currentLog = nil
         self.timeElapsed = 0

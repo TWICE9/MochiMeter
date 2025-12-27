@@ -197,6 +197,43 @@ CREATE POLICY "Users can delete their own fasting logs"
     USING (auth.uid() = user_id);
 
 -- =========================================
+-- 4.5. USER WEIGHT LOGS TABLE
+-- =========================================
+CREATE TABLE IF NOT EXISTS public.user_weight_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+
+    weight_kg DOUBLE PRECISION NOT NULL,
+    note TEXT,  -- Optional note (e.g., "morning", "after workout")
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    -- Sync metadata
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_weight_logs_user_id ON public.user_weight_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_weight_logs_timestamp ON public.user_weight_logs(timestamp);
+
+ALTER TABLE public.user_weight_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own weight logs"
+    ON public.user_weight_logs FOR SELECT
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own weight logs"
+    ON public.user_weight_logs FOR INSERT
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own weight logs"
+    ON public.user_weight_logs FOR UPDATE
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own weight logs"
+    ON public.user_weight_logs FOR DELETE
+    USING (auth.uid() = user_id);
+
+-- =========================================
 -- 5. USER RECIPES TABLE
 -- =========================================
 CREATE TABLE IF NOT EXISTS public.user_recipes (
@@ -297,6 +334,9 @@ CREATE TRIGGER update_user_water_logs_updated_at BEFORE UPDATE ON public.user_wa
 CREATE TRIGGER update_user_fasting_logs_updated_at BEFORE UPDATE ON public.user_fasting_logs
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+CREATE TRIGGER update_user_weight_logs_updated_at BEFORE UPDATE ON public.user_weight_logs
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 CREATE TRIGGER update_user_recipes_updated_at BEFORE UPDATE ON public.user_recipes
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -309,6 +349,7 @@ CREATE TRIGGER update_user_reminders_updated_at BEFORE UPDATE ON public.user_rem
 COMMENT ON TABLE public.profiles IS 'Stores user profile and onboarding data';
 COMMENT ON TABLE public.user_food_logs IS 'Stores user food diary entries with nutrition information';
 COMMENT ON TABLE public.user_water_logs IS 'Stores user water intake logs';
+COMMENT ON TABLE public.user_weight_logs IS 'Stores user weight tracking history for progress monitoring';
 COMMENT ON TABLE public.user_fasting_logs IS 'Stores user intermittent fasting sessions';
 COMMENT ON TABLE public.user_recipes IS 'Stores user custom recipes';
 COMMENT ON TABLE public.user_reminders IS 'Stores user notification reminders';

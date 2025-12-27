@@ -41,6 +41,7 @@ struct WelcomePage: View {
 
                 // Get Started button
                 Button {
+                    guard !flowManager.isNavigating else { return }
                     flowManager.goNext()
                 } label: {
                     Text("Get Started")
@@ -52,6 +53,7 @@ struct WelcomePage: View {
                         .background(Color("AppSecondaryAccent"))
                         .cornerRadius(16)
                 }
+                .disabled(flowManager.isNavigating)
 
                 // Divider
                 HStack {
@@ -98,7 +100,7 @@ struct WelcomePage: View {
                                 let profileDownloaded = await authManager.downloadAndSyncProfile(modelContext: modelContext)
 
                                 if profileDownloaded {
-                                    let userId = user.id.uuidString
+                                    let userId = user.id.uuidString.lowercased()
                                     await MainActor.run {
                                         syncMessage = "Syncing your data..."
                                     }
@@ -159,7 +161,7 @@ struct WelcomePage: View {
                                     let profileDownloaded = await authManager.downloadAndSyncProfile(modelContext: modelContext)
 
                                     if profileDownloaded {
-                                        let userId = user.id.uuidString
+                                        let userId = user.id.uuidString.lowercased()
                                         await MainActor.run {
                                             syncMessage = "Syncing your data..."
                                         }
@@ -247,7 +249,7 @@ struct WelcomePage: View {
                             let profileDownloaded = await authManager.downloadAndSyncProfile(modelContext: modelContext)
 
                             if profileDownloaded {
-                                let userId = user.id.uuidString
+                                let userId = user.id.uuidString.lowercased()
                                 await MainActor.run {
                                     syncMessage = "Syncing your data..."
                                 }

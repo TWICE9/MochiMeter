@@ -65,8 +65,25 @@ struct MacroProgressRing: View {
         }
     }
 
+    // Adaptive font sizes based on ring size
+    private var isLargeRing: Bool {
+        ringSize >= 100
+    }
+    
+    private var valueFontSize: Font {
+        isLargeRing ? .title3.bold() : .headline.bold()
+    }
+    
+    private var unitFontSize: Font {
+        isLargeRing ? .subheadline : .caption
+    }
+    
+    private var labelFontSize: Font {
+        isLargeRing ? .body : .subheadline
+    }
+    
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: isLargeRing ? 10 : 8) {
             ZStack {
                 // Background Ring
                 Circle()
@@ -101,20 +118,20 @@ struct MacroProgressRing: View {
                 }
 
                 // Center Label
-                VStack {
+                VStack(spacing: isLargeRing ? 2 : 0) {
                     Text("\(Int(current))")
-                        .font(.headline).bold()
+                        .font(valueFontSize)
                         .foregroundStyle(showOverflow && isOverGoal ? .red : adaptiveTextColor)
 
                     Text("g")
-                        .font(.caption)
+                        .font(unitFontSize)
                         .foregroundStyle(adaptiveTextColor.opacity(0.7))
                 }
             }
 
             // Macro Name Label
             Text(macroName)
-                .font(.subheadline)
+                .font(labelFontSize)
                 .fontWeight(.medium)
                 .foregroundStyle(adaptiveColor)
         }

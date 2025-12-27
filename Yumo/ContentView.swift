@@ -39,12 +39,22 @@ struct ContentView: View {
                     NewOnboardingScreen {
                         withAnimation {
                             hasCompletedOnboarding = true
+                            // Track onboarding completion
+                            AnalyticsManager.shared.trackOnboardingCompleted(
+                                signedIn: authManager.currentUser != nil,
+                                authMethod: nil
+                            )
                         }
                     }
                 } else {
                     OnboardingScreen {
                         withAnimation {
                             hasCompletedOnboarding = true
+                            // Track onboarding completion
+                            AnalyticsManager.shared.trackOnboardingCompleted(
+                                signedIn: authManager.currentUser != nil,
+                                authMethod: nil
+                            )
                         }
                     }
                 }

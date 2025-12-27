@@ -70,7 +70,7 @@ struct RecipeListView: View {
                         // --- Recipe List ---
                         ForEach(recipes) { recipe in
                             // Tapping a row will navigate to its detail view
-                            NavigationLink(destination: Text("Recipe Detail View (TODO)")) {
+                            NavigationLink(destination: RecipeDetailView(recipe: recipe)) {
                                 _buildRecipeRow(recipe: recipe)
                             }
                             .buttonStyle(.plain)

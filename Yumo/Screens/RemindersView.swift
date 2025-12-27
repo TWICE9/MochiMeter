@@ -118,7 +118,9 @@ struct RemindersView: View {
                 }
             }
         }
-        .sheet(isPresented: $isShowingCreateSheet) {
+        .sheet(isPresented: $isShowingCreateSheet, onDismiss: {
+            Task { await refreshData() }
+        }) {
             CreateReminderView()
         }
         .task {
@@ -163,10 +165,17 @@ struct RemindersView: View {
     private func _buildDynamicBackground() -> some View {
         ZStack {
             Color("AppPrimaryDark", bundle: nil).ignoresSafeArea()
-            RadialGradient(gradient: Gradient(colors: [Color("AppSecondaryAccent").opacity(0.3), .clear]), center: .topLeading, startRadius: 50, endRadius: 450)
-                .offset(offset1).offset(x: -150, y: -150).ignoresSafeArea()
-            RadialGradient(gradient: Gradient(colors: [Color("AppPrimaryAccent").opacity(0.4), .clear]), center: .bottomTrailing, startRadius: 100, endRadius: 500)
-                .offset(offset2).offset(x: 100, y: 150).ignoresSafeArea()
+            if colorScheme == .light {
+                RadialGradient(gradient: Gradient(colors: [Color("AppSecondaryAccent").opacity(0.3), .clear]), center: .topLeading, startRadius: 50, endRadius: 450)
+                    .offset(offset1).offset(x: -150, y: -150).ignoresSafeArea()
+                RadialGradient(gradient: Gradient(colors: [Color("AppPrimaryAccent").opacity(0.4), .clear]), center: .bottomTrailing, startRadius: 100, endRadius: 500)
+                    .offset(offset2).offset(x: 100, y: 150).ignoresSafeArea()
+            } else {
+                RadialGradient(gradient: Gradient(colors: [Color.white.opacity(0.08), .clear]), center: .topLeading, startRadius: 50, endRadius: 500)
+                    .offset(offset1).offset(x: -100, y: -100).ignoresSafeArea()
+                RadialGradient(gradient: Gradient(colors: [Color.white.opacity(0.05), .clear]), center: .bottomTrailing, startRadius: 50, endRadius: 500)
+                    .offset(offset2).offset(x: 100, y: 100).ignoresSafeArea()
+            }
         }
         .blur(radius: 60)
         .onAppear { animateOrbs() }

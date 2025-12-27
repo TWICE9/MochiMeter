@@ -29,9 +29,11 @@ struct GenderPage: View {
                         emoji: emoji,
                         isSelected: flowManager.gender == gender,
                         action: {
+                            guard !flowManager.isNavigating else { return }
                             flowManager.gender = gender
                             // Auto-advance after short delay
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                guard !flowManager.isNavigating else { return }
                                 flowManager.goNext()
                             }
                         }

@@ -3,12 +3,50 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const openAIKey = Deno.env.get('OPENAI_API_KEY')
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+
+// CORS headers - restricted to Supabase and app origins
+const allowedOrigins = [
+  Deno.env.get("SUPABASE_URL") ?? "",
+  "capacitor://localhost",
+  "ionic://localhost",
+  "http://localhost",
+]
+
+function getCorsHeaders(req: Request) {
+  const origin = req.headers.get("Origin") ?? ""
+  const isAllowed = allowedOrigins.some((allowed) => origin.startsWith(allowed)) || origin === ""
+  return {
+    "Access-Control-Allow-Origin": isAllowed ? origin || "*" : allowedOrigins[0],
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  }
+}
+
+// Simple in-memory rate limiting (per user, resets on function cold start)
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>()
+const RATE_LIMIT = 20 // requests per window (lower for image analysis)
+const RATE_WINDOW_MS = 60 * 1000 // 1 minute
+
+function checkRateLimit(userId: string): boolean {
+  const now = Date.now()
+  const userLimit = rateLimitMap.get(userId)
+
+  if (!userLimit || now > userLimit.resetTime) {
+    rateLimitMap.set(userId, { count: 1, resetTime: now + RATE_WINDOW_MS })
+    return true
+  }
+
+  if (userLimit.count >= RATE_LIMIT) {
+    return false
+  }
+
+  userLimit.count++
+  return true
 }
 
 serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req)
+
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -31,7 +69,15 @@ serve(async (req) => {
       throw new Error('Unauthorized')
     }
 
-    console.log(`📸 Food scan request from user: ${user.id}`)
+    // Check rate limit
+    if (!checkRateLimit(user.id)) {
+      return new Response(
+        JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      )
+    }
+
+    console.log("Food scan request received")
 
     // Get image from request
     const { imageBase64 } = await req.json()
@@ -113,9 +159,15 @@ Return JSON:
       .replace(/```\n?/g, '')
       .trim()
 
-    const nutritionData = JSON.parse(cleanContent)
+    let nutritionData
+    try {
+      nutritionData = JSON.parse(cleanContent)
+    } catch (parseError) {
+      console.error("Failed to parse AI response as JSON")
+      throw new Error("Failed to parse nutrition data from AI response")
+    }
 
-    console.log(`📊 Analysis complete: ${nutritionData.name} - ${nutritionData.calories} cal`)
+    console.log("Food analysis complete")
 
     return new Response(
       JSON.stringify(nutritionData),

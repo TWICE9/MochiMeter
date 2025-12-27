@@ -10,6 +10,7 @@ import Combine
 import SuperwallKit
 import StoreKit
 import Supabase
+import UIKit
 
 @MainActor
 class SuperwallManager: ObservableObject {
@@ -17,6 +18,9 @@ class SuperwallManager: ObservableObject {
 
     @Published var isPremium: Bool = false
     @Published var isLoadingPremiumStatus: Bool = false
+    
+    // Track current UI style preference
+    var currentAppearance: UIUserInterfaceStyle = .unspecified
 
     // Track Supabase premium override separately
     private var supabasePremium: Bool = false
@@ -25,8 +29,8 @@ class SuperwallManager: ObservableObject {
 
     /// Configure Superwall on app launch
     func configure() {
-        // Configure Superwall with your API key
-        Superwall.configure(apiKey: "pk_qzQrt_so0H7uQKDR8dIZD")
+        // Configure Superwall with API key from Secrets.xcconfig
+        Superwall.configure(apiKey: Secrets.superwallAPIKey)
 
         // Set up delegate for handling events
         Superwall.shared.delegate = self
@@ -34,7 +38,9 @@ class SuperwallManager: ObservableObject {
         // Don't check premium status on launch to avoid Apple ID prompt
         // Status will be checked when user interacts with paywall
 
-        print("✅ Superwall configured successfully")
+        #if DEBUG
+        print("Superwall configured")
+        #endif
     }
 
     /// Show the paywall
@@ -45,7 +51,6 @@ class SuperwallManager: ObservableObject {
 
             // Register the placement to trigger the paywall
             Superwall.shared.register(placement: "show_paywall")
-            print("💎 Paywall placement registered")
         }
     }
 
@@ -63,24 +68,16 @@ class SuperwallManager: ObservableObject {
         switch subscriptionStatus {
         case .active:
             superwallActive = true
-            print("✅ User has active Superwall subscription")
         case .inactive:
             superwallActive = false
-            print("ℹ️ No active Superwall subscription")
         case .unknown:
             superwallActive = false
-            print("❓ Unknown Superwall subscription status")
         @unknown default:
             superwallActive = false
-            print("❓ Unhandled Superwall subscription status")
         }
 
         // Premium if EITHER Superwall OR Supabase says premium
         self.isPremium = superwallActive || supabasePremium
-
-        if supabasePremium && !superwallActive {
-            print("👨‍👩‍👧‍👦 Premium granted via Supabase override (family/manual)")
-        }
 
         self.isLoadingPremiumStatus = false
     }
@@ -112,14 +109,12 @@ class SuperwallManager: ObservableObject {
             let result = try JSONDecoder().decode(PremiumResponse.self, from: response.data)
             supabasePremium = result.is_premium ?? false
 
-            if supabasePremium {
-                print("✅ Supabase premium override: TRUE")
-            }
-
         } catch {
             // If fetch fails, don't grant premium
             supabasePremium = false
-            print("ℹ️ Could not check Supabase premium: \(error.localizedDescription)")
+            #if DEBUG
+            print("Could not check Supabase premium: \(error.localizedDescription)")
+            #endif
         }
     }
 
@@ -134,28 +129,22 @@ class SuperwallManager: ObservableObject {
 extension SuperwallManager: SuperwallDelegate {
     func handleSuperwallEvent(withInfo eventInfo: SuperwallEventInfo) {
         switch eventInfo.event {
+        case .paywallOpen:
+            // Ensure paywall window respects the app's appearance
+            Task { @MainActor in
+                self.applyAppearanceToAllWindows()
+            }
+
         case .transactionComplete:
-            print("💰 Transaction completed")
             Task { await checkPremiumStatus() }
 
         case .subscriptionStatusDidChange:
-            print("📊 Subscription status changed")
             Task { await checkPremiumStatus() }
 
-        case .paywallClose:
-            print("🚪 Paywall closed")
-
-        case .paywallOpen:
-            print("📱 Paywall opened")
-
-        case .paywallProductsLoadStart:
-            print("🛍️ Loading products from StoreKit...")
-
         case .paywallProductsLoadFail(let error, _):
-            print("❌ Failed to load products: \(error ?? "Unknown error")")
-
-        case .paywallProductsLoadComplete:
-            print("✅ Products loaded successfully")
+            #if DEBUG
+            print("Failed to load products: \(error ?? "Unknown error")")
+            #endif
 
         default:
             break
@@ -163,6 +152,28 @@ extension SuperwallManager: SuperwallDelegate {
     }
 
     func handleCustomPaywallAction(withName name: String) {
-        print("🔧 Custom paywall action: \(name)")
+        #if DEBUG
+        print("Custom paywall action: \(name)")
+        #endif
+    }
+}
+
+// MARK: - Appearance Helper
+extension SuperwallManager {
+    func setAppearance(_ style: UIUserInterfaceStyle) {
+        self.currentAppearance = style
+        // Apply immediately in case a paywall is already open
+        Task { @MainActor in
+            self.applyAppearanceToAllWindows()
+        }
+    }
+
+    @MainActor
+    private func applyAppearanceToAllWindows() {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
+        for window in windowScene.windows {
+            // Apply the stored appearance preference
+            window.overrideUserInterfaceStyle = currentAppearance
+        }
     }
 }

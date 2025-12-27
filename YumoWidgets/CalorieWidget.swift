@@ -66,11 +66,11 @@ struct CalorieProvider: TimelineProvider {
             let logsPredicate: Predicate<LoggedFood>
             if let userId = userId {
                 logsPredicate = #Predicate {
-                    $0.userId == userId && $0.timestamp >= start && $0.timestamp < end
+                    $0.userId == userId && $0.timestamp >= start && $0.timestamp < end && $0.recipe == nil
                 }
             } else {
                 logsPredicate = #Predicate {
-                    $0.userId == nil && $0.timestamp >= start && $0.timestamp < end
+                    $0.userId == nil && $0.timestamp >= start && $0.timestamp < end && $0.recipe == nil
                 }
             }
 

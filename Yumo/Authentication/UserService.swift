@@ -174,7 +174,9 @@ actor SupabaseUserService: UserService {
             .rpc("create_user_if_missing", params: params)
             .execute()
 
-        print("🗄️ Ensured profile for user: \(safeName)")
+        #if DEBUG
+        print("Ensured profile for user")
+        #endif
     }
 
 
@@ -207,17 +209,9 @@ actor SupabaseUserService: UserService {
             healthkit_enabled: goals.healthKitEnabled
         )
 
-        // Debug logging
-        print("🐛 Uploading to Supabase profiles table:")
-        print("   user_id: \(params.user_id)")
-        print("   name: \(params.name)")
-        print("   gender: \(params.gender)")
-        print("   height_cm: \(params.height_cm)")
-        print("   weight_kg: \(params.weight_kg)")
-        print("   daily_calories: \(params.daily_calories)")
-        print("   blockers: \(params.blockers ?? [])")
-        print("   diet_type: \(params.diet_type ?? "nil")")
-        print("   goals_to_accomplish: \(params.goals_to_accomplish ?? [])")
+        #if DEBUG
+        print("Uploading profile to Supabase...")
+        #endif
 
         do {
             try await client.database
@@ -225,11 +219,13 @@ actor SupabaseUserService: UserService {
                 .upsert(params)
                 .execute()
 
-            print("✅ Upserted onboarding → profiles table successfully")
+            #if DEBUG
+            print("Profile upsert successful")
+            #endif
         } catch {
-            print("❌ Failed to upsert to profiles table:")
-            print("   Error: \(error)")
-            print("   Localized: \(error.localizedDescription)")
+            #if DEBUG
+            print("Failed to upsert profile: \(error.localizedDescription)")
+            #endif
             throw error
         }
     }
@@ -241,12 +237,14 @@ actor SupabaseUserService: UserService {
         let response = try await client.database
             .from("profiles")
             .select()
-            .eq("user_id", value: user.id.uuidString)
+            .eq("user_id", value: user.id.uuidString.lowercased())
             .single()
             .execute()
 
         let profile = try JSONDecoder().decode(ProfileResponse.self, from: response.data)
-        print("📥 Downloaded profile for user: \(user.email ?? "Unknown")")
+        #if DEBUG
+        print("Profile download successful")
+        #endif
         return profile
     }
 
@@ -282,7 +280,9 @@ actor SupabaseUserService: UserService {
             .upsert(params)
             .execute()
 
-        print("📤 Updated user goals → Supabase")
+        #if DEBUG
+        print("User goals updated in Supabase")
+        #endif
     }
 }
 

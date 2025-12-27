@@ -19,6 +19,7 @@
 		18AC183D2EF008EE00EBCEBA /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 18AC183C2EF008EE00EBCEBA /* GoogleSignIn */; };
 		18AC183F2EF008EE00EBCEBA /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 18AC183E2EF008EE00EBCEBA /* GoogleSignInSwift */; };
 		18AC18432EF03DCD00EBCEBA /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 18AC18422EF03DCD00EBCEBA /* StoreKit.framework */; };
+		18B694312EFF62F70035E36B /* PostHog in Frameworks */ = {isa = PBXBuildFile; productRef = 18B694302EFF62F70035E36B /* PostHog */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -60,6 +61,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		185DD0242EFBCA2100DB8E04 /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 		187B323C2EBEE1B200389DAC /* Yumo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Yumo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		187B32492EBEE1B400389DAC /* YumoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YumoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		187B32532EBEE1B400389DAC /* YumoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YumoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -113,6 +115,7 @@
 				Models/FastingLog.swift,
 				Models/LoggedFood.swift,
 				Models/LoggedWater.swift,
+				Models/LoggedWeight.swift,
 				Models/MasterFoodRow.swift,
 				Models/OpenFoodFactsModels.swift,
 				Models/Recipe.swift,
@@ -180,6 +183,7 @@
 				18AC183F2EF008EE00EBCEBA /* GoogleSignInSwift in Frameworks */,
 				187AA88F2ECD916F000ACC62 /* Auth in Frameworks */,
 				18AA35EF2ECC8304002AFB3A /* Realtime in Frameworks */,
+				18B694312EFF62F70035E36B /* PostHog in Frameworks */,
 				1825510A2EE05A5000BFD72A /* SuperwallKit in Frameworks */,
 				18AC183D2EF008EE00EBCEBA /* GoogleSignIn in Frameworks */,
 			);
@@ -221,6 +225,7 @@
 				188637BF2EC5FF8B00521F01 /* YumoWidgets */,
 				188637BA2EC5FF8A00521F01 /* Frameworks */,
 				187B323D2EBEE1B200389DAC /* Products */,
+				185DD0242EFBCA2100DB8E04 /* Secrets.xcconfig */,
 			);
 			sourceTree = "<group>";
 		};
@@ -276,6 +281,7 @@
 				182551092EE05A5000BFD72A /* SuperwallKit */,
 				18AC183C2EF008EE00EBCEBA /* GoogleSignIn */,
 				18AC183E2EF008EE00EBCEBA /* GoogleSignInSwift */,
+				18B694302EFF62F70035E36B /* PostHog */,
 			);
 			productName = Yumo;
 			productReference = 187B323C2EBEE1B200389DAC /* Yumo.app */;
@@ -354,7 +360,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2600;
-				LastUpgradeCheck = 2600;
+				LastUpgradeCheck = 2620;
 				TargetAttributes = {
 					187B323B2EBEE1B200389DAC = {
 						CreatedOnToolsVersion = 26.0.1;
@@ -385,6 +391,7 @@
 				18AA35EB2ECC8304002AFB3A /* XCRemoteSwiftPackageReference "supabase-swift" */,
 				182551082EE05A5000BFD72A /* XCRemoteSwiftPackageReference "Superwall-iOS" */,
 				18AC183B2EF008EE00EBCEBA /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+				18B6942F2EFF614A0035E36B /* XCRemoteSwiftPackageReference "posthog-ios" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 187B323D2EBEE1B200389DAC /* Products */;
@@ -482,6 +489,7 @@
 /* Begin XCBuildConfiguration section */
 		187B325B2EBEE1B400389DAC /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 185DD0242EFBCA2100DB8E04 /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -539,6 +547,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -546,6 +555,7 @@
 		};
 		187B325C2EBEE1B400389DAC /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 185DD0242EFBCA2100DB8E04 /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -596,6 +606,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};
@@ -603,6 +614,7 @@
 		};
 		187B325E2EBEE1B400389DAC /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 185DD0242EFBCA2100DB8E04 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -648,6 +660,7 @@
 		};
 		187B325F2EBEE1B400389DAC /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 185DD0242EFBCA2100DB8E04 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -793,12 +806,13 @@
 		};
 		188637CF2EC5FF8C00521F01 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 185DD0242EFBCA2100DB8E04 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = YumoWidgetsExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 1.01;
 				DEVELOPMENT_TEAM = AKGUAYDPCS;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = YumoWidgets/Info.plist;
@@ -828,12 +842,13 @@
 		};
 		188637D02EC5FF8C00521F01 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 185DD0242EFBCA2100DB8E04 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = YumoWidgetsExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 1.01;
 				DEVELOPMENT_TEAM = AKGUAYDPCS;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = YumoWidgets/Info.plist;
@@ -936,6 +951,14 @@
 				minimumVersion = 9.0.0;
 			};
 		};
+		18B6942F2EFF614A0035E36B /* XCRemoteSwiftPackageReference "posthog-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/PostHog/posthog-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.36.2;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -978,6 +1001,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 18AC183B2EF008EE00EBCEBA /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
 			productName = GoogleSignInSwift;
+		};
+		18B694302EFF62F70035E36B /* PostHog */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 18B6942F2EFF614A0035E36B /* XCRemoteSwiftPackageReference "posthog-ios" */;
+			productName = PostHog;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

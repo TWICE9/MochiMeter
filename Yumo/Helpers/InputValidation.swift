@@ -18,6 +18,8 @@ enum InputValidation {
     static let maxDailyMacro: Double = 1_000       // 1,000g daily macro goal
     static let maxWaterML: Double = 10_000         // 10 liters
     static let maxCupSizeML: Double = 2_000        // 2 liters per cup
+    static let minWeightKg: Double = 20           // 20 kg minimum
+    static let maxWeightKg: Double = 500          // 500 kg maximum
 
     // MARK: - Validation Methods
 
@@ -54,5 +56,10 @@ enum InputValidation {
     /// Caps cup size in mL to the maximum allowed
     static func capCupSize(_ value: Double) -> Double {
         return min(max(value, 50), maxCupSizeML)
+    }
+
+    /// Caps weight in kg to the allowed range
+    static func capWeight(_ value: Double) -> Double {
+        return min(max(value, minWeightKg), maxWeightKg)
     }
 }

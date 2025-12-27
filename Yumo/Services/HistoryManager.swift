@@ -26,15 +26,19 @@ struct DaySummary: Identifiable {
 struct HistoryManager {
     
     /// Calculates a summary for a single day's logs.
+    /// Note: Filters out recipe ingredients (logs where recipe != nil)
     static func summarize(logs: [LoggedFood], goals: UserGoals) -> DaySummary {
-        let calories = logs.reduce(0) { $0 + $1.totalCalories }
-        let protein = logs.reduce(0) { $0 + $1.totalProtein }
-        let carbs = logs.reduce(0) { $0 + $1.totalCarbs }
-        let fat = logs.reduce(0) { $0 + $1.totalFat }
+        // Exclude recipe ingredients - only count standalone food logs
+        let filteredLogs = logs.filter { $0.recipe == nil }
+        
+        let calories = filteredLogs.reduce(0) { $0 + $1.totalCalories }
+        let protein = filteredLogs.reduce(0) { $0 + $1.totalProtein }
+        let carbs = filteredLogs.reduce(0) { $0 + $1.totalCarbs }
+        let fat = filteredLogs.reduce(0) { $0 + $1.totalFat }
         let goalMet = calories <= goals.dailyCalories && goals.dailyCalories > 0
         
         return DaySummary(
-            date: logs.first?.timestamp.startOfDay ?? Date().startOfDay,
+            date: filteredLogs.first?.timestamp.startOfDay ?? Date().startOfDay,
             totalCalories: calories,
             totalProtein: protein,
             totalCarbs: carbs,

@@ -45,6 +45,25 @@ struct LogScannedFoodView: View {
     private var totalSugar: Double { nutriments.servingSugars * servingAmount }
     private var totalSalt: Double { nutriments.servingSalt * servingAmount }
     private var totalPotassium: Double { nutriments.servingPotassium * servingAmount }
+    
+    // Helper to get a non-empty display name for the food
+    private var foodDisplayName: String {
+        // Try product name first
+        if let name = product.productName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !name.isEmpty {
+            return name
+        }
+        
+        // Fallback to brand if product name is empty or nil
+        if let brand = product.brands?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !brand.isEmpty {
+            return brand
+        }
+        
+        // Last resort fallback
+        return "Scanned Item"
+    }
+    
     private var baseBackgroundColor: Color {
         colorScheme == .dark
             ? Color("AppPrimaryDark")
@@ -79,12 +98,15 @@ struct LogScannedFoodView: View {
                     // Title + serving stepper
                     HStack(alignment: .center, spacing: 12) {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text(product.productName ?? "Scanned Item")
+                            Text(foodDisplayName)
                                 .font(.title2)
                                 .fontWeight(.bold)
                                 .foregroundColor(Color("AppTextPrimary"))
 
-                            if let brand = product.brands, !brand.isEmpty {
+                            // Only show brand if it's different from the title
+                            if let brand = product.brands?.trimmingCharacters(in: .whitespacesAndNewlines),
+                               !brand.isEmpty,
+                               brand != foodDisplayName {
                                 Text(brand)
                                     .font(.subheadline)
                                     .foregroundColor(Color("AppTextPrimary").opacity(0.7))
@@ -318,7 +340,7 @@ struct LogScannedFoodView: View {
 
         // Create the food log item synchronously
         let newItem = LoggedFood(
-            name: product.productName ?? "Scanned Item",
+            name: foodDisplayName,
             timestamp: selectedDate,
             servingSizeDescription: servingDescription,
             servingAmount: servingAmount,
@@ -345,6 +367,9 @@ struct LogScannedFoodView: View {
 
         // Haptic feedback
         UINotificationFeedbackGenerator().notificationOccurred(.success)
+        
+        // Track analytics
+        AnalyticsManager.shared.trackFoodLogged(name: foodDisplayName, calories: totalCalories, source: .barcode)
 
         // Dismiss immediately
         if let onLogComplete {
@@ -358,7 +383,7 @@ struct LogScannedFoodView: View {
 
         // Do all cloud operations in background (non-blocking)
         let barcode = product.id
-        let name = product.productName ?? "Scanned Item"
+        let name = foodDisplayName
         let brand = product.brands
         let calories = editableCalories
         let protein = editableProtein
@@ -459,10 +484,12 @@ struct LogScannedFoodView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(product.productName ?? "Scanned Item")
+                    Text(foodDisplayName)
                         .font(.title2).bold()
                         .foregroundStyle(Color("AppTextPrimary"))
-                    if let brand = product.brands, !brand.isEmpty {
+                    if let brand = product.brands?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !brand.isEmpty,
+                       brand != foodDisplayName {
                         Text(brand)
                             .font(.subheadline)
                             .foregroundStyle(Color("AppTextPrimary").opacity(0.7))
@@ -677,13 +704,15 @@ struct LogScannedFoodView: View {
     @ViewBuilder
     private func _buildHeader() -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(product.productName ?? "Unknown Product")
+            Text(foodDisplayName)
                 .font(.largeTitle).bold()
                 .foregroundStyle(Color("AppTextPrimary"))
                 .lineLimit(2)
                 .minimumScaleFactor(0.8)
 
-            if let brand = product.brands {
+            if let brand = product.brands?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !brand.isEmpty,
+               brand != foodDisplayName {
                 Text(brand)
                     .font(.title3).fontWeight(.medium)
                     .foregroundStyle(Color("AppTextPrimary").opacity(0.6))

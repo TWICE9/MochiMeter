@@ -36,6 +36,14 @@ struct AICameraScanView: View {
     private let apiService = OpenFoodFactsService()
     @State private var selectedItem: PhotosPickerItem?
     @ObservedObject private var superwallManager = SuperwallManager.shared
+    
+    // Camera Modes
+    enum CameraMode: String {
+        case aiScan
+        case barcode
+    }
+    @AppStorage("lastCameraMode") private var cameraMode: CameraMode = .aiScan
+    @AppStorage("cameraScanHintDismissed") private var hintDismissed: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -162,6 +170,13 @@ struct AICameraScanView: View {
                     ZStack {
                         CameraPreview(camera: camera)
                             .ignoresSafeArea()
+                        
+                        // Barcode Scanning Frame Overlay (only in barcode mode)
+                        if cameraMode == .barcode {
+                            BarcodeScannerFrameOverlay()
+                                .transition(.opacity)
+                                .animation(.easeInOut(duration: 0.3), value: cameraMode)
+                        }
 
                         VStack {
                             // Top bar with close and photo library buttons
@@ -193,98 +208,221 @@ struct AICameraScanView: View {
                             }
                             .padding()
 
-                            // Status indicator at top
-                            VStack(spacing: 12) {
-                                if isFetchingProduct {
-                                    ProgressView()
-                                        .tint(.white)
-                                    Text("Looking up product...")
-                                        .font(.headline)
-                                        .foregroundColor(.white)
-                                } else {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: "barcode.viewfinder")
-                                            .font(.system(size: 20))
-                                        Text("Scanning for barcodes...")
+                            // Dismissible Instructions Banner
+                            if !hintDismissed {
+                                VStack(spacing: 0) {
+                                    HStack(alignment: .top, spacing: 12) {
+                                        Image(systemName: cameraMode == .aiScan ? "sparkles" : "barcode.viewfinder")
+                                            .font(.title2)
+                                            .foregroundColor(.yellow)
+                                        
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(cameraMode == .aiScan ? "AI Food Scanner" : "Barcode Scanner")
+                                                .font(.headline)
+                                                .foregroundColor(.white)
+                                            
+                                            Text(cameraMode == .aiScan 
+                                                ? "Point at your food and tap the shutter button. Works best with good lighting and a clear view of the dish."
+                                                : "Point the camera at a product's barcode. It will scan automatically when detected.")
+                                                .font(.caption)
+                                                .foregroundColor(.white.opacity(0.8))
+                                                .fixedSize(horizontal: false, vertical: true)
+                                        }
+                                        
+                                        Spacer()
+                                        
+                                        Button {
+                                            withAnimation(.easeOut(duration: 0.2)) {
+                                                hintDismissed = true
+                                            }
+                                        } label: {
+                                            Image(systemName: "xmark")
+                                                .font(.caption.bold())
+                                                .foregroundColor(.white.opacity(0.6))
+                                                .frame(width: 24, height: 24)
+                                                .background(Color.white.opacity(0.2))
+                                                .clipShape(Circle())
+                                        }
                                     }
-                                    .font(.headline)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.white)
+                                    .padding(16)
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(RoundedRectangle(cornerRadius: 16))
                                 }
+                                .padding(.horizontal, 16)
+                                .padding(.top, 8)
+                                .transition(.move(edge: .top).combined(with: .opacity))
+                                .animation(.easeInOut(duration: 0.25), value: cameraMode)
                             }
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 16)
-                            .background(.ultraThinMaterial)
-                            .cornerRadius(16)
-                            .padding(.top, 20)
+
+
 
                             Spacer()
 
-                            // Flash (left) and centered capture button
-                            ZStack {
-                                // Flash on the left
-                                HStack {
-                                    VStack(spacing: 8) {
+                            // Dynamic Hint Area
+                            Group {
+                                if cameraMode == .aiScan {
+                                    Text("Take a photo of your food")
+                                } else {
+                                    if isFetchingProduct {
+                                        HStack(spacing: 8) {
+                                            ProgressView().tint(.white)
+                                            Text("Looking up product...")
+                                        }
+                                    } else {
+                                        Text("Scanning for barcodes...")
+                                    }
+                                }
+                            }
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(.ultraThinMaterial)
+                            .cornerRadius(20)
+                            .padding(.bottom, 10)
+                            .animation(.easeInOut(duration: 0.2), value: cameraMode)
+                            .animation(.easeInOut(duration: 0.2), value: isFetchingProduct)
+                            .transition(.opacity)
+                            
+                            // Bottom Controls Area
+                            VStack(spacing: 20) {
+                                // Mode Selector (Carousel Style)
+                                ZStack {
+                                    // Active Indicator
+                                    Circle()
+                                        .fill(Color.yellow) // High visibility indicator
+                                        .frame(width: 6, height: 6)
+                                        .offset(y: 16)
+
+                                    // Sliding Text Strip
+                                    HStack(spacing: 40) {
+                                        Button { withAnimation { cameraMode = .aiScan } } label: {
+                                            Text("AI SCAN")
+                                                .font(.headline)
+                                                .fontWeight(.bold)
+                                                .foregroundColor(cameraMode == .aiScan ? .yellow : .white.opacity(0.5))
+                                                .shadow(radius: 2)
+                                        }
+                                        .frame(width: 80) // Fixed width for precise centering
+
+                                        Button { withAnimation { cameraMode = .barcode } } label: {
+                                            Text("BARCODE")
+                                                .font(.headline)
+                                                .fontWeight(.bold)
+                                                .foregroundColor(cameraMode == .barcode ? .yellow : .white.opacity(0.5))
+                                                .shadow(radius: 2)
+                                        }
+                                        .frame(width: 90)
+                                    }
+                                    // Slide the strip to center the active item (Shift +/- 62)
+                                    .offset(x: cameraMode == .aiScan ? 62 : -62)
+                                    .animation(.spring(response: 0.35, dampingFraction: 0.75), value: cameraMode)
+                                }
+                                .frame(height: 40)
+                                .frame(maxWidth: .infinity) // Allow full width so words aren't cut off
+                                .contentShape(Rectangle()) // Capture taps/swipes in this area too
+                                .gesture(
+                                    DragGesture()
+                                        .onEnded { value in
+                                            if value.translation.width < -20 {
+                                                withAnimation { cameraMode = .barcode }
+                                            } else if value.translation.width > 20 {
+                                                withAnimation { cameraMode = .aiScan }
+                                            }
+                                        }
+                                )
+                                .padding(.top, 10)
+                                
+                                // Flash (left) and Shutter (Center)
+                                ZStack {
+                                    // Flash on the left (Always visible)
+                                    HStack {
                                         Button {
                                             camera.toggleFlash()
                                         } label: {
                                             ZStack {
                                                 Circle()
-                                                    .fill(.white.opacity(0.3))
-                                                    .frame(width: 60, height: 60)
-
-                                                Circle()
-                                                    .fill(camera.isFlashOn ? .yellow : .white)
+                                                    .fill(.ultraThinMaterial)
                                                     .frame(width: 50, height: 50)
-
+                                                
                                                 Image(systemName: camera.isFlashOn ? "bolt.fill" : "bolt.slash.fill")
-                                                    .font(.title3)
-                                                    .foregroundColor(.black)
+                                                    .font(.body)
+                                                    .foregroundColor(.white)
                                             }
                                         }
                                         .buttonStyle(ScaleButtonStyle())
+                                        Spacer()
                                     }
-                                    Spacer()
-                                }
-                                .padding(.horizontal, 32)
-
-                                // Centered AI scan button + label
-                                VStack(spacing: 12) {
-                                    Button {
-                                        if superwallManager.isPremium {
-                                            capturePhoto()
+                                    .padding(.horizontal, 32)
+                                    
+                                    // Center Button Area (Stable Size)
+                                    ZStack {
+                                        if cameraMode == .aiScan {
+                                            // AI Shutter Button
+                                            Button {
+                                                if superwallManager.isPremium {
+                                                    capturePhoto()
+                                                } else {
+                                                    superwallManager.showPaywall()
+                                                }
+                                            } label: {
+                                                ZStack {
+                                                    Circle()
+                                                        .strokeBorder(Color.white, lineWidth: 4)
+                                                        .frame(width: 84, height: 84)
+                                                    
+                                                    Circle()
+                                                        .fill(Color.white)
+                                                        .frame(width: 70, height: 70)
+                                                    
+                                                    Image(systemName: "sparkles")
+                                                        .font(.title2)
+                                                        .foregroundColor(.black)
+                                                }
+                                            }
+                                            .buttonStyle(ScaleButtonStyle())
+                                            .transition(.opacity)
+                                            
                                         } else {
-                                            superwallManager.showPaywall()
-                                        }
-                                    } label: {
-                                        ZStack {
-                                            Circle()
-                                                .fill(.white.opacity(0.3))
-                                                .frame(width: 80, height: 80)
-
-                                            Circle()
-                                                .fill(.white)
-                                                .frame(width: 65, height: 65)
-
-                                            Image(systemName: "sparkles")
-                                                .font(.title2)
-                                                .foregroundColor(.black)
+                                            // Barcode Mode Visual (Same Size)
+                                            ZStack {
+                                                Circle()
+                                                    .strokeBorder(Color.white.opacity(0.3), lineWidth: 4)
+                                                    .frame(width: 84, height: 84)
+                                                
+                                                Circle() // Inner fill for tap target if needed, or just visual
+                                                    .fill(Color.white.opacity(0.1))
+                                                    .frame(width: 70, height: 70)
+                                                
+                                                Image(systemName: "barcode.viewfinder")
+                                                    .font(.system(size: 32))
+                                                    .foregroundColor(.white)
+                                            }
+                                            .transition(.opacity)
                                         }
                                     }
-                                    .buttonStyle(ScaleButtonStyle())
-
-                                    Text("Tap to AI Scan")
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 8)
-                                        .background(.ultraThinMaterial)
-                                        .cornerRadius(12)
                                 }
                             }
                             .padding(.bottom, 50)
                         }
+                        .contentShape(Rectangle()) // Ensure swipes work on the entire screen
+                        .gesture(
+                            DragGesture()
+                                .onEnded { value in
+                                    if value.translation.width < -50 {
+                                        // Swipe Left -> Barcode
+                                        if cameraMode == .aiScan {
+                                            withAnimation(.easeInOut(duration: 0.25)) { cameraMode = .barcode }
+                                        }
+                                    } else if value.translation.width > 50 {
+                                        // Swipe Right -> AI Scan
+                                        if cameraMode == .barcode {
+                                            withAnimation(.easeInOut(duration: 0.25)) { cameraMode = .aiScan }
+                                        }
+                                    }
+                                }
+                        )
                     }
                 }
             }
@@ -465,6 +603,10 @@ struct AICameraScanView: View {
 
                     // Haptic feedback
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    
+                    // Track analytics
+                    AnalyticsManager.shared.trackAIScanUsed(success: true, itemsDetected: 1)
+                    AnalyticsManager.shared.trackFoodLogged(name: result.name, calories: result.calories, source: .aiScan)
                 }
             } catch {
                 // If analysis fails, mark as error
@@ -477,6 +619,9 @@ struct AICameraScanView: View {
                     }
 
                     UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    
+                    // Track analytics
+                    AnalyticsManager.shared.trackAIScanUsed(success: false, itemsDetected: 0)
                 }
             }
         }
@@ -621,6 +766,14 @@ struct AICameraScanView: View {
     private func handleBarcodeDetection(_ barcode: String) {
         // Prevent duplicate scans
         guard detectedBarcode != barcode else { return }
+        
+        // Only run barcode logic if in Barcode Mode
+        guard cameraMode == .barcode else { return }
+        
+        // Turn off flash immediately if on
+        if camera.isFlashOn {
+            camera.toggleFlash()
+        }
 
         detectedBarcode = barcode
         isFetchingProduct = true
@@ -1545,6 +1698,106 @@ struct ScaleButtonStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.90 : 1.0)
             .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+// MARK: - Barcode Scanner Frame Overlay
+
+struct BarcodeScannerFrameOverlay: View {
+    @State private var isAnimating = false
+    
+    private let frameWidth: CGFloat = 280
+    private let frameHeight: CGFloat = 140
+    private let cornerLength: CGFloat = 30
+    private let lineWidth: CGFloat = 4
+    
+    var body: some View {
+        ZStack {
+            // Dimmed background with cutout
+            Color.black.opacity(0.4)
+                .mask(
+                    Rectangle()
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .frame(width: frameWidth, height: frameHeight)
+                                .blendMode(.destinationOut)
+                        )
+                )
+                .ignoresSafeArea()
+            
+            // Scanning Frame with animated line
+            ZStack {
+                // Animated scanning line
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            colors: [.clear, .white.opacity(0.8), .clear],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: frameWidth - 20, height: 2)
+                    .offset(y: isAnimating ? 50 : -50)
+                    .animation(
+                        .easeInOut(duration: 1.5).repeatForever(autoreverses: true),
+                        value: isAnimating
+                    )
+            }
+            .frame(width: frameWidth, height: frameHeight)
+        }
+        .onAppear {
+            isAnimating = true
+        }
+    }
+}
+
+// Corner brackets for the barcode scanner
+struct BarcodeScannerCorners: View {
+    let frameWidth: CGFloat
+    let frameHeight: CGFloat
+    let cornerLength: CGFloat
+    let lineWidth: CGFloat
+    
+    var body: some View {
+        ZStack {
+            // Top-left corner
+            CornerBracket(cornerLength: cornerLength, lineWidth: lineWidth)
+                .position(x: lineWidth / 2, y: lineWidth / 2)
+            
+            // Top-right corner
+            CornerBracket(cornerLength: cornerLength, lineWidth: lineWidth)
+                .rotationEffect(.degrees(90))
+                .position(x: frameWidth - lineWidth / 2, y: lineWidth / 2)
+            
+            // Bottom-left corner
+            CornerBracket(cornerLength: cornerLength, lineWidth: lineWidth)
+                .rotationEffect(.degrees(-90))
+                .position(x: lineWidth / 2, y: frameHeight - lineWidth / 2)
+            
+            // Bottom-right corner
+            CornerBracket(cornerLength: cornerLength, lineWidth: lineWidth)
+                .rotationEffect(.degrees(180))
+                .position(x: frameWidth - lineWidth / 2, y: frameHeight - lineWidth / 2)
+        }
+    }
+}
+
+// Individual corner bracket
+struct CornerBracket: View {
+    let cornerLength: CGFloat
+    let lineWidth: CGFloat
+    
+    var body: some View {
+        Path { path in
+            // Horizontal line
+            path.move(to: CGPoint(x: 0, y: 0))
+            path.addLine(to: CGPoint(x: cornerLength, y: 0))
+            
+            // Vertical line
+            path.move(to: CGPoint(x: 0, y: 0))
+            path.addLine(to: CGPoint(x: 0, y: cornerLength))
+        }
+        .stroke(Color.white, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
     }
 }
 

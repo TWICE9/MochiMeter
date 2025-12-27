@@ -7,6 +7,7 @@ import Supabase
 enum CloudSyncStep: CaseIterable {
     case foodLogs
     case waterLogs
+    case weightLogs
     case fastingLogs
     case recipes
     case reminders
@@ -17,6 +18,7 @@ enum CloudSyncStep: CaseIterable {
         switch self {
         case .foodLogs: return "Food logs synced"
         case .waterLogs: return "Water logs synced"
+        case .weightLogs: return "Weight logs synced"
         case .fastingLogs: return "Fasting logs synced"
         case .recipes: return "Recipes synced"
         case .reminders: return "Reminders synced"
@@ -45,7 +47,12 @@ actor CloudSyncManager {
     ) async {
         print("🔄 Starting full sync for user: \(userId)")
 
-        // Run all syncs in parallel for faster performance
+        // IMPORTANT: Sync recipes FIRST, because food logs may reference recipes as ingredients
+        // This ensures recipes exist before we try to link food logs to them
+        await self.syncRecipes(userId: userId, context: context)
+        await progressHandler?(.recipes)
+
+        // Now run remaining syncs in parallel for faster performance
         await withTaskGroup(of: CloudSyncStep.self) { group in
             group.addTask {
                 await self.syncFoodLogs(userId: userId, context: context)
@@ -56,12 +63,12 @@ actor CloudSyncManager {
                 return .waterLogs
             }
             group.addTask {
-                await self.syncFastingLogs(userId: userId, context: context)
-                return .fastingLogs
+                await self.syncWeightLogs(userId: userId, context: context)
+                return .weightLogs
             }
             group.addTask {
-                await self.syncRecipes(userId: userId, context: context)
-                return .recipes
+                await self.syncFastingLogs(userId: userId, context: context)
+                return .fastingLogs
             }
             group.addTask {
                 await self.syncReminders(userId: userId, context: context)
@@ -123,17 +130,57 @@ actor CloudSyncManager {
                     }
                 } else {
                     // Create new local record
-                    let newLog = createLocalFoodLog(from: cloudLog, userId: userId)
+                    let newLog = createLocalFoodLog(from: cloudLog, userId: userId, context: context)
                     context.insert(newLog)
                 }
             }
 
-            // 4. Upload local logs that don't exist in cloud
+            // 4. Upload local logs that don't exist in cloud (BATCH for performance)
+            var logsToUpload: [CloudFoodLog] = []
             for localLog in localLogs {
                 let existsInCloud = cloudLogs.contains(where: { $0.id == localLog.id.uuidString })
                 if !existsInCloud {
-                    try await uploadFoodLog(localLog, userId: userId)
+                    // Upload image first if available (can't batch images)
+                    var imagePath: String? = localLog.cloudImagePath
+                    if imagePath == nil, let photoData = localLog.photoData {
+                        imagePath = await ImageStorageManager.shared.uploadImage(
+                            imageData: photoData,
+                            userId: userId,
+                            logId: localLog.id.uuidString
+                        )
+                        if let path = imagePath {
+                            localLog.cloudImagePath = path
+                        }
+                    }
+                    
+                    logsToUpload.append(CloudFoodLog(
+                        id: localLog.id.uuidString,
+                        user_id: userId,
+                        name: localLog.name,
+                        timestamp: localLog.timestamp,
+                        serving_size_description: localLog.servingSizeDescription,
+                        serving_amount: localLog.servingAmount,
+                        calories_per_serving: localLog.caloriesPerServing,
+                        protein_per_serving: localLog.proteinPerServing,
+                        carbs_per_serving: localLog.carbsPerServing,
+                        fat_per_serving: localLog.fatPerServing,
+                        fiber_per_serving: localLog.fiberPerServing,
+                        sugar_per_serving: localLog.sugarPerServing,
+                        salt_per_serving: localLog.saltPerServing,
+                        potassium_per_serving: localLog.potassiumPerServing,
+                        barcode: localLog.barcode,
+                        brand: localLog.brand,
+                        is_halal: localLog.isHalal,
+                        recipe_id: localLog.recipe?.id.uuidString,
+                        image_path: imagePath,
+                        updated_at: localLog.timestamp
+                    ))
                 }
+            }
+            
+            // Batch upsert all food logs at once
+            if !logsToUpload.isEmpty {
+                try await supabaseClient.database.from("user_food_logs").upsert(logsToUpload).execute()
             }
 
             try? context.save()
@@ -288,7 +335,7 @@ actor CloudSyncManager {
         local.cloudImagePath = cloud.image_path  // Sync cloud image path
     }
 
-    private func createLocalFoodLog(from cloud: CloudFoodLog, userId: String) -> LoggedFood {
+    private func createLocalFoodLog(from cloud: CloudFoodLog, userId: String, context: ModelContext) -> LoggedFood {
         let log = LoggedFood(
             id: UUID(uuidString: cloud.id) ?? UUID(),
             name: cloud.name,
@@ -309,6 +356,17 @@ actor CloudSyncManager {
         )
         log.userId = userId
         log.cloudImagePath = cloud.image_path  // Store cloud image path for later download
+        
+        // Link to recipe if this food log is a recipe ingredient
+        if let recipeIdString = cloud.recipe_id,
+           let recipeUUID = UUID(uuidString: recipeIdString) {
+            // Look up the recipe in the local database
+            let recipePredicate = #Predicate<Recipe> { $0.id == recipeUUID }
+            if let recipe = try? context.fetch(FetchDescriptor(predicate: recipePredicate)).first {
+                log.recipe = recipe
+            }
+        }
+        
         return log
     }
 
@@ -345,19 +403,24 @@ actor CloudSyncManager {
                 }
             }
 
-            // Upload local → cloud
+            // Upload local → cloud (BATCH for performance)
+            var logsToUpload: [CloudWaterLog] = []
             for localLog in localLogs {
                 let existsInCloud = cloudLogs.contains(where: { $0.id == localLog.id.uuidString })
                 if !existsInCloud {
-                    let cloudLog = CloudWaterLog(
+                    logsToUpload.append(CloudWaterLog(
                         id: localLog.id.uuidString,
                         user_id: userId,
                         amount_ml: localLog.amountML,
                         timestamp: localLog.timestamp,
                         updated_at: localLog.timestamp
-                    )
-                    try await supabaseClient.database.from("user_water_logs").upsert(cloudLog).execute()
+                    ))
                 }
+            }
+            
+            // Batch upsert all at once
+            if !logsToUpload.isEmpty {
+                try await supabaseClient.database.from("user_water_logs").upsert(logsToUpload).execute()
             }
 
             try? context.save()
@@ -365,6 +428,70 @@ actor CloudSyncManager {
 
         } catch {
             print("❌ Water logs sync failed: \(error)")
+        }
+    }
+
+    // MARK: - Weight Logs Sync
+
+    func syncWeightLogs(userId: String, context: ModelContext) async {
+        do {
+            let localPredicate = #Predicate<LoggedWeight> { $0.userId == userId }
+            let localDescriptor = FetchDescriptor<LoggedWeight>(predicate: localPredicate)
+            let localLogs = (try? context.fetch(localDescriptor)) ?? []
+
+            let cloudLogs: [CloudWeightLog] = try await supabaseClient.database
+                .from("user_weight_logs")
+                .select()
+                .eq("user_id", value: userId)
+                .execute()
+                .value
+
+            // Merge cloud → local
+            for cloudLog in cloudLogs {
+                if let localLog = localLogs.first(where: { $0.id.uuidString == cloudLog.id }) {
+                    if cloudLog.updated_at > localLog.timestamp {
+                        localLog.weightKg = cloudLog.weight_kg
+                        localLog.note = cloudLog.note
+                        localLog.timestamp = cloudLog.timestamp
+                    }
+                } else {
+                    let newLog = LoggedWeight(
+                        id: UUID(uuidString: cloudLog.id) ?? UUID(),
+                        timestamp: cloudLog.timestamp,
+                        weightKg: cloudLog.weight_kg,
+                        note: cloudLog.note
+                    )
+                    newLog.userId = userId
+                    context.insert(newLog)
+                }
+            }
+
+            // Upload local → cloud (BATCH for performance)
+            var logsToUpload: [CloudWeightLog] = []
+            for localLog in localLogs {
+                let existsInCloud = cloudLogs.contains(where: { $0.id == localLog.id.uuidString })
+                if !existsInCloud {
+                    logsToUpload.append(CloudWeightLog(
+                        id: localLog.id.uuidString,
+                        user_id: userId,
+                        weight_kg: localLog.weightKg,
+                        note: localLog.note,
+                        timestamp: localLog.timestamp,
+                        updated_at: localLog.timestamp
+                    ))
+                }
+            }
+            
+            // Batch upsert all at once
+            if !logsToUpload.isEmpty {
+                try await supabaseClient.database.from("user_weight_logs").upsert(logsToUpload).execute()
+            }
+
+            try? context.save()
+            print("✅ Weight logs synced")
+
+        } catch {
+            print("❌ Weight logs sync failed: \(error)")
         }
     }
 
@@ -403,20 +530,25 @@ actor CloudSyncManager {
                 }
             }
 
-            // Upload local → cloud
+            // Upload local → cloud (BATCH for performance)
+            var logsToUpload: [CloudFastingLog] = []
             for localLog in localLogs {
                 let existsInCloud = cloudLogs.contains(where: { $0.id == localLog.id.uuidString })
                 if !existsInCloud {
-                    let cloudLog = CloudFastingLog(
+                    logsToUpload.append(CloudFastingLog(
                         id: localLog.id.uuidString,
                         user_id: userId,
                         start_time: localLog.startTime,
                         end_time: localLog.endTime,
                         goal_hours: localLog.goalHours,
                         updated_at: localLog.endTime ?? localLog.startTime
-                    )
-                    try await supabaseClient.database.from("user_fasting_logs").upsert(cloudLog).execute()
+                    ))
                 }
+            }
+            
+            // Batch upsert all at once
+            if !logsToUpload.isEmpty {
+                try await supabaseClient.database.from("user_fasting_logs").upsert(logsToUpload).execute()
             }
 
             try? context.save()
@@ -460,19 +592,24 @@ actor CloudSyncManager {
                 }
             }
 
-            // Upload local → cloud
+            // Upload local → cloud (BATCH for performance)
+            var recipesToUpload: [CloudRecipe] = []
             for localRecipe in localRecipes {
                 let existsInCloud = cloudRecipes.contains(where: { $0.id == localRecipe.id.uuidString })
                 if !existsInCloud {
-                    let cloudRecipe = CloudRecipe(
+                    recipesToUpload.append(CloudRecipe(
                         id: localRecipe.id.uuidString,
                         user_id: userId,
                         name: localRecipe.name,
                         servings: localRecipe.servings,
                         updated_at: Date()
-                    )
-                    try await supabaseClient.database.from("user_recipes").upsert(cloudRecipe).execute()
+                    ))
                 }
+            }
+            
+            // Batch upsert all at once
+            if !recipesToUpload.isEmpty {
+                try await supabaseClient.database.from("user_recipes").upsert(recipesToUpload).execute()
             }
 
             try? context.save()
@@ -522,11 +659,12 @@ actor CloudSyncManager {
                 }
             }
 
-            // Upload local → cloud
+            // Upload local → cloud (BATCH for performance)
+            var remindersToUpload: [CloudReminder] = []
             for localReminder in localReminders {
                 let existsInCloud = cloudReminders.contains(where: { $0.id == localReminder.id.uuidString })
                 if !existsInCloud {
-                    let cloudReminder = CloudReminder(
+                    remindersToUpload.append(CloudReminder(
                         id: localReminder.id.uuidString,
                         user_id: userId,
                         title: localReminder.title,
@@ -536,9 +674,13 @@ actor CloudSyncManager {
                         weekdays: localReminder.weekdays,
                         notification_id: localReminder.notificationID,
                         updated_at: localReminder.time
-                    )
-                    try await supabaseClient.database.from("user_reminders").upsert(cloudReminder).execute()
+                    ))
                 }
+            }
+            
+            // Batch upsert all at once
+            if !remindersToUpload.isEmpty {
+                try await supabaseClient.database.from("user_reminders").upsert(remindersToUpload).execute()
             }
 
             try? context.save()
@@ -593,6 +735,40 @@ actor CloudSyncManager {
             print("✅ Fasting log uploaded")
         } catch {
             print("❌ Failed to upload fasting log: \(error)")
+        }
+    }
+
+    /// Upload a single weight log immediately after creation
+    func uploadWeightLogImmediately(_ log: LoggedWeight, userId: String) async {
+        do {
+            let cloudLog = CloudWeightLog(
+                id: log.id.uuidString,
+                user_id: userId,
+                weight_kg: log.weightKg,
+                note: log.note,
+                timestamp: log.timestamp,
+                updated_at: log.timestamp
+            )
+            try await supabaseClient.database.from("user_weight_logs").upsert(cloudLog).execute()
+            print("✅ Weight log uploaded: \(log.weightKg) kg")
+        } catch {
+            print("❌ Failed to upload weight log: \(error)")
+        }
+    }
+
+    /// Delete a weight log from the cloud
+    func deleteWeightLogFromCloud(logId: String, userId: String) async {
+        do {
+            try await supabaseClient.database
+                .from("user_weight_logs")
+                .delete()
+                .eq("id", value: logId)
+                .eq("user_id", value: userId)
+                .execute()
+
+            print("☁️ Deleted weight log from cloud: \(logId)")
+        } catch {
+            print("❌ Failed to delete weight log from cloud: \(error)")
         }
     }
 

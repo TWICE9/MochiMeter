@@ -1,5 +1,5 @@
 {
-  "originHash" : "590d7534cbf0c8fee8c9f300d8b254068b1ec9e5e616d24fd13a7df7a9ca993c",
+  "originHash" : "733a9277fa941b92021dd6f54277b2d4bbbd4f04b23e660b777c5053b79dddbd",
   "pins" : [
     {
       "identity" : "app-check",
@@ -65,6 +65,15 @@
       }
     },
     {
+      "identity" : "posthog-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/PostHog/posthog-ios",
+      "state" : {
+        "revision" : "cfbae6be113616156e6840dbfb61d59593ea1db5",
+        "version" : "3.36.2"
+      }
+    },
+    {
       "identity" : "promises",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/google/promises.git",
@@ -96,8 +105,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/superwall/Superwall-iOS",
       "state" : {
-        "revision" : "c2eccb9e1f4ffb3df284007cc62c154590f94741",
-        "version" : "4.11.0"
+        "revision" : "741e4c5ce6970499fe59896f23945c1ad9c9f118",
+        "version" : "4.11.2"
       }
     },
     {

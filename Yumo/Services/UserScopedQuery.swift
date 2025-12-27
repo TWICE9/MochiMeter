@@ -18,9 +18,9 @@ actor UserScopedQuery {
 
         let predicate: Predicate<LoggedFood>
         if let userId = userId {
-            predicate = #Predicate { $0.userId == userId }
+            predicate = #Predicate { $0.userId == userId && $0.recipe == nil }
         } else {
-            predicate = #Predicate { $0.userId == nil }
+            predicate = #Predicate { $0.userId == nil && $0.recipe == nil }
         }
 
         let descriptor = FetchDescriptor(
@@ -42,13 +42,15 @@ actor UserScopedQuery {
             predicate = #Predicate { log in
                 log.userId == userId &&
                 log.timestamp >= startOfDay &&
-                log.timestamp < endOfDay
+                log.timestamp < endOfDay &&
+                log.recipe == nil
             }
         } else {
             predicate = #Predicate { log in
                 log.userId == nil &&
                 log.timestamp >= startOfDay &&
-                log.timestamp < endOfDay
+                log.timestamp < endOfDay &&
+                log.recipe == nil
             }
         }
 
@@ -220,6 +222,57 @@ actor UserScopedQuery {
         let descriptor = FetchDescriptor(
             predicate: predicate,
             sortBy: [SortDescriptor(\Reminder.time, order: .forward)]
+        )
+
+        return (try? context.fetch(descriptor)) ?? []
+    }
+
+    // MARK: - Weight Logs
+
+    static func fetchWeightLogs(context: ModelContext) async -> [LoggedWeight] {
+        let userId = await UserSession.shared.getCurrentUserId()
+
+        let predicate: Predicate<LoggedWeight>
+        if let userId = userId {
+            predicate = #Predicate { $0.userId == userId }
+        } else {
+            predicate = #Predicate { $0.userId == nil }
+        }
+
+        let descriptor = FetchDescriptor(
+            predicate: predicate,
+            sortBy: [SortDescriptor(\LoggedWeight.timestamp, order: .reverse)]
+        )
+
+        return (try? context.fetch(descriptor)) ?? []
+    }
+
+    static func fetchLatestWeight(context: ModelContext) async -> LoggedWeight? {
+        let logs = await fetchWeightLogs(context: context)
+        return logs.first
+    }
+
+    static func fetchWeightLogsForRange(from startDate: Date, to endDate: Date, context: ModelContext) async -> [LoggedWeight] {
+        let userId = await UserSession.shared.getCurrentUserId()
+
+        let predicate: Predicate<LoggedWeight>
+        if let userId = userId {
+            predicate = #Predicate { log in
+                log.userId == userId &&
+                log.timestamp >= startDate &&
+                log.timestamp <= endDate
+            }
+        } else {
+            predicate = #Predicate { log in
+                log.userId == nil &&
+                log.timestamp >= startDate &&
+                log.timestamp <= endDate
+            }
+        }
+
+        let descriptor = FetchDescriptor(
+            predicate: predicate,
+            sortBy: [SortDescriptor(\LoggedWeight.timestamp, order: .forward)]
         )
 
         return (try? context.fetch(descriptor)) ?? []

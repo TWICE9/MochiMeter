@@ -5,6 +5,7 @@ import SwiftData
 
 struct CreateReminderView: View {
     
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     
@@ -156,10 +157,17 @@ struct CreateReminderView: View {
     @ViewBuilder
     private func _buildDynamicBackground() -> some View {
         ZStack {
-            RadialGradient(gradient: Gradient(colors: [Color("AppSecondaryAccent").opacity(0.3), .clear]), center: .topLeading, startRadius: 50, endRadius: 450)
-                .offset(x: -150, y: -150).ignoresSafeArea()
-            RadialGradient(gradient: Gradient(colors: [Color("AppPrimaryAccent").opacity(0.4), .clear]), center: .bottomTrailing, startRadius: 100, endRadius: 500)
-                .offset(x: 100, y: 150).ignoresSafeArea()
+            if colorScheme == .light {
+                RadialGradient(gradient: Gradient(colors: [Color("AppSecondaryAccent").opacity(0.3), .clear]), center: .topLeading, startRadius: 50, endRadius: 450)
+                    .offset(x: -150, y: -150).ignoresSafeArea()
+                RadialGradient(gradient: Gradient(colors: [Color("AppPrimaryAccent").opacity(0.4), .clear]), center: .bottomTrailing, startRadius: 100, endRadius: 500)
+                    .offset(x: 100, y: 150).ignoresSafeArea()
+            } else {
+                RadialGradient(gradient: Gradient(colors: [Color.white.opacity(0.08), .clear]), center: .topLeading, startRadius: 50, endRadius: 500)
+                    .offset(x: -150, y: -150).ignoresSafeArea()
+                RadialGradient(gradient: Gradient(colors: [Color.white.opacity(0.05), .clear]), center: .bottomTrailing, startRadius: 50, endRadius: 500)
+                    .offset(x: 100, y: 150).ignoresSafeArea()
+            }
         }
         .blur(radius: 60)
     }

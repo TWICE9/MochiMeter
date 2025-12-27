@@ -84,8 +84,6 @@ actor CloudScanUploader {
                 .insert(payload)
                 .execute()
 
-            print("☁️ Uploaded scan to scan_history")
-
         } catch {
             print("❌ Failed to upload scan:", error.localizedDescription)
         }
@@ -134,8 +132,6 @@ actor CloudScanUploader {
             try await supabase.database
                 .rpc("upsert_food", params: params)
                 .execute()
-
-            print("📈 Upserted master_foods")
 
         } catch {
             print("❌ Failed upsert:", error.localizedDescription)

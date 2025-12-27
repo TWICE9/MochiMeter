@@ -37,20 +37,22 @@ struct LoadingScreenView: View {
                     .stroke(Color("AppSecondaryAccent"), lineWidth: 8)
                     .frame(width: 120, height: 120)
                     .rotationEffect(.degrees(-90))
-                    .animation(.linear(duration: 0.3), value: progress)
+                    .animation(.easeInOut(duration: 0.3), value: progress)
 
                 Text("\(Int(progress * 100))%")
                     .font(.title)
                     .fontWeight(.bold)
                     .foregroundColor(primaryText)
+                    .contentTransition(.numericText())
+                    .animation(.easeInOut(duration: 0.15), value: progress)
             }
 
             // Message
             Text(currentMessage)
                 .font(.headline)
                 .foregroundColor(mutedText)
-                .transition(.opacity)
-                .id(currentMessage)
+                .contentTransition(.interpolate)
+                .animation(.easeInOut(duration: 0.3), value: currentMessage)
 
             Spacer()
         }

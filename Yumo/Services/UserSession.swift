@@ -10,25 +10,35 @@ import Foundation
 
 actor UserSession {
     static let shared = UserSession()
-    private init() {}
 
     private let userIdKey = "current_user_id"
-    private let appGroupDefaults = UserDefaults(suiteName: "group.com.jesseta.yumo")!
+    private let appGroupDefaults: UserDefaults?
 
-    /// Get the current user ID (returns nil if not signed in)
+    private init(suiteName: String = "group.com.jesseta.yumo") {
+        self.appGroupDefaults = UserDefaults(suiteName: suiteName)
+        if appGroupDefaults == nil {
+            assertionFailure("Failed to initialize App Group UserDefaults. Check entitlements.")
+        }
+    }
+
+    /// Get the current user ID (returns nil if not signed in or app group unavailable)
     func getCurrentUserId() -> String? {
-        return appGroupDefaults.string(forKey: userIdKey)
+        return appGroupDefaults?.string(forKey: userIdKey)
     }
 
     /// Set the user ID after sign in
     func setUserId(_ userId: String) {
-        appGroupDefaults.set(userId, forKey: userIdKey)
-        print("✅ UserSession: Set userId = \(userId)")
+        appGroupDefaults?.set(userId, forKey: userIdKey)
+        #if DEBUG
+        print("UserSession: Set userId")
+        #endif
     }
 
     /// Clear the user ID on sign out (keeps local data)
     func clearUserId() {
-        appGroupDefaults.removeObject(forKey: userIdKey)
-        print("🗑️ UserSession: Cleared userId")
+        appGroupDefaults?.removeObject(forKey: userIdKey)
+        #if DEBUG
+        print("UserSession: Cleared userId")
+        #endif
     }
 }

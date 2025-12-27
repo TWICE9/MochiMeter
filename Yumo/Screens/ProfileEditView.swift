@@ -19,6 +19,7 @@ struct ProfileEditView: View {
     @State private var activityLevel: ActivityLevel
     @State private var weightGoal: GoalType
     @State private var targetWeight: Double
+    @State private var weeklyWeightChangeKg: Double
 
     init(goals: UserGoals) {
         self.goals = goals
@@ -29,6 +30,8 @@ struct ProfileEditView: View {
         _activityLevel = State(initialValue: goals.activityLevel)
         _weightGoal = State(initialValue: goals.weightGoal)
         _targetWeight = State(initialValue: goals.targetWeight)
+        // Handle existing users who have 0 (migration from before this feature existed)
+        _weeklyWeightChangeKg = State(initialValue: goals.weeklyWeightChangeKg < 0.1 ? 0.5 : goals.weeklyWeightChangeKg)
     }
 
     private var primaryTextColor: Color {
@@ -53,6 +56,62 @@ struct ProfileEditView: View {
 
     private var baseBackgroundColor: Color {
         colorScheme == .dark ? Color("AppPrimaryDark") : Color(red: 245/255, green: 245/255, blue: 247/255)
+    }
+
+    // Intensity helpers
+    private var intensityLabel: String {
+        if weightGoal == .maintain {
+            return "Maintaining"
+        }
+        switch weeklyWeightChangeKg {
+        case 0..<0.3: return "Gentle"
+        case 0.3..<0.6: return "Moderate"
+        case 0.6..<0.85: return "Ambitious"
+        default: return "Intense"
+        }
+    }
+
+    private var intensityColor: Color {
+        if weightGoal == .maintain {
+            return inputAccentColor
+        }
+        switch weeklyWeightChangeKg {
+        case 0..<0.3: return .green
+        case 0.3..<0.6: return inputAccentColor
+        case 0.6..<0.85: return .orange
+        default: return .red
+        }
+    }
+
+    private var paceLabel: String {
+        switch weightGoal {
+        case .lose: return "Weight Loss Pace"
+        case .gain: return "Weight Gain Pace"
+        case .maintain: return "Weekly Target"
+        }
+    }
+
+    private var paceIcon: String {
+        switch weightGoal {
+        case .lose: return "arrow.down.circle"
+        case .gain: return "arrow.up.circle"
+        case .maintain: return "equal.circle"
+        }
+    }
+
+    private var estimatedEndDate: Date? {
+        let weightDiff = abs(weight - targetWeight)
+        guard weightDiff > 0, weeklyWeightChangeKg > 0 else { return nil }
+        let weeksNeeded = weightDiff / weeklyWeightChangeKg
+        let daysNeeded = Int(ceil(weeksNeeded * 7))
+        return Calendar.current.date(byAdding: .day, value: daysNeeded, to: Date())
+    }
+
+    private var formattedEndDate: String {
+        guard let endDate = estimatedEndDate else { return "—" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, yyyy"
+        return formatter.string(from: endDate)
     }
 
     var body: some View {
@@ -170,6 +229,84 @@ struct ProfileEditView: View {
                                         .foregroundStyle(primaryTextColor)
 
                                     _buildGoalPicker()
+                                }
+
+                                // Weight Change Pace (for all goal types)
+                                Divider().background(inputBorderColor)
+
+                                VStack(alignment: .leading, spacing: 12) {
+                                    HStack {
+                                        Label(paceLabel, systemImage: paceIcon)
+                                            .font(.subheadline.weight(.medium))
+                                            .foregroundStyle(primaryTextColor)
+
+                                        Spacer()
+
+                                        Text(intensityLabel)
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(.white)
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 4)
+                                            .background(intensityColor)
+                                            .clipShape(Capsule())
+                                    }
+
+                                    if weightGoal == .maintain {
+                                        // For maintain, show simple text
+                                        HStack {
+                                            Text("0 kg/week")
+                                                .font(.title3.weight(.bold))
+                                                .foregroundStyle(inputAccentColor)
+                                            Spacer()
+                                            Text("No change target")
+                                                .font(.caption)
+                                                .foregroundStyle(secondaryTextColor)
+                                        }
+                                    } else {
+                                        // Rate display for lose/gain
+                                        HStack {
+                                            Text(String(format: "%.2f kg/week", weeklyWeightChangeKg))
+                                                .font(.title3.weight(.bold))
+                                                .foregroundStyle(intensityColor)
+
+                                            Spacer()
+
+                                            if estimatedEndDate != nil {
+                                                VStack(alignment: .trailing, spacing: 2) {
+                                                    Text("Goal by")
+                                                        .font(.caption)
+                                                        .foregroundStyle(secondaryTextColor)
+                                                    Text(formattedEndDate)
+                                                        .font(.caption.weight(.semibold))
+                                                        .foregroundStyle(primaryTextColor)
+                                                }
+                                            }
+                                        }
+
+                                        Slider(
+                                            value: $weeklyWeightChangeKg,
+                                            in: 0.1...1.0,
+                                            step: 0.05
+                                        )
+                                        .tint(intensityColor)
+
+                                        HStack {
+                                            Text("0.1 kg")
+                                                .font(.caption)
+                                                .foregroundStyle(secondaryTextColor)
+                                            Spacer()
+                                            Text("1.0 kg")
+                                                .font(.caption)
+                                                .foregroundStyle(secondaryTextColor)
+                                        }
+
+                                        if weeklyWeightChangeKg >= 0.85 {
+                                            Text("This is an intense pace. Consider a gentler rate for sustainable results.")
+                                                .font(.caption)
+                                                .foregroundStyle(.orange)
+                                                .padding(.top, 4)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -363,7 +500,8 @@ struct ProfileEditView: View {
             heightCm: height,
             age: age,
             activityLevel: activityLevel,
-            weightGoal: weightGoal
+            weightGoal: weightGoal,
+            weeklyWeightChangeKg: weeklyWeightChangeKg
         )
 
         // Save profile data
@@ -374,6 +512,7 @@ struct ProfileEditView: View {
         goals.gender = gender
         goals.activityLevel = activityLevel
         goals.weightGoal = weightGoal
+        goals.weeklyWeightChangeKg = weeklyWeightChangeKg
 
         // Save calculated goals
         goals.dailyCalories = calculatedMacros.targetCalories

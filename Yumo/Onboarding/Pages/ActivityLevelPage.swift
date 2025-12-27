@@ -29,9 +29,11 @@ struct ActivityLevelPage: View {
                         emoji: emoji,
                         isSelected: flowManager.activityLevel == level,
                         action: {
+                            guard !flowManager.isNavigating else { return }
                             flowManager.activityLevel = level
                             // Auto-advance after short delay
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                guard !flowManager.isNavigating else { return }
                                 flowManager.goNext()
                             }
                         }

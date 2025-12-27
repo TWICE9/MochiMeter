@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>SUPABASE_URL</key>
+	<string>$(SUPABASE_URL)</string>
+	<key>SUPABASE_ANON_KEY</key>
+	<string>$(SUPABASE_ANON_KEY)</string>
+	<key>SUPERWALL_API_KEY</key>
+	<string>$(SUPERWALL_API_KEY)</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -16,5 +22,9 @@
 	</array>
 	<key>GIDClientID</key>
 	<string>807951583828-21uudtqha8oribbekd37j59jfssge0ep.apps.googleusercontent.com</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>MochibopBold.ttf</string>
+	</array>
 </dict>
 </plist>

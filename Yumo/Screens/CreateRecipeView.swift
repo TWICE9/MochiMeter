@@ -4,6 +4,8 @@ import SwiftUI
 import SwiftData
 
 struct CreateRecipeView: View {
+    
+    var existingRecipe: Recipe? = nil // Optional existing recipe to edit
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -283,8 +285,32 @@ struct CreateRecipeView: View {
             .scrollContentBackground(.hidden)
             .scrollDismissesKeyboard(.interactively)
         }
-        .navigationTitle("New Recipe")
+        .onTapGesture {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
+        .navigationTitle(existingRecipe != nil ? "Edit Recipe" : "New Recipe")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            if let recipe = existingRecipe {
+                recipeName = recipe.name
+                recipeServings = Int(recipe.servings)
+                
+                // Load ingredients
+                if let ingredients = recipe.ingredients {
+                    addedIngredients = ingredients.map { log in
+                        RecipeIngredient(
+                            name: log.name,
+                            servingDescription: log.servingSizeDescription,
+                            amount: log.servingAmount,
+                            caloriesPerServing: log.caloriesPerServing,
+                            proteinPerServing: log.proteinPerServing,
+                            carbsPerServing: log.carbsPerServing,
+                            fatPerServing: log.fatPerServing
+                        )
+                    }
+                }
+            }
+        }
         .sheet(isPresented: $showingSearch) {
             IngredientSearchSheet(
                 onSelect: { ingredient in
@@ -393,17 +419,40 @@ struct CreateRecipeView: View {
 
     // MARK: - Save Logic
 
+    // MARK: - Save Logic
+
     private func saveRecipe() {
         Task {
             let userId = await UserSession.shared.getCurrentUserId()
+            
+            let targetRecipe: Recipe
+            
+            if let existing = existingRecipe {
+                // UPDATE existing
+                existing.name = recipeName.trimmingCharacters(in: .whitespacesAndNewlines)
+                existing.servings = Double(recipeServings)
+                existing.userId = userId
+                targetRecipe = existing
+                
+                // Clear old ingredients to replace them (simplest way to handle edits)
+                if let oldIngredients = existing.ingredients {
+                    for old in oldIngredients {
+                        modelContext.delete(old)
+                    }
+                }
+                // existing.ingredients is now empty implicitly or will be overwritten by relationships
+            } else {
+                // CREATE new
+                let newRecipe = Recipe(
+                    name: recipeName.trimmingCharacters(in: .whitespacesAndNewlines),
+                    servings: Double(recipeServings)
+                )
+                newRecipe.userId = userId
+                modelContext.insert(newRecipe)
+                targetRecipe = newRecipe
+            }
 
-            let newRecipe = Recipe(
-                name: recipeName.trimmingCharacters(in: .whitespacesAndNewlines),
-                servings: Double(recipeServings)
-            )
-            newRecipe.userId = userId
-            modelContext.insert(newRecipe)
-
+            // Add ingredients
             for ingredient in addedIngredients {
                 let loggedFood = LoggedFood(
                     name: ingredient.name,
@@ -415,12 +464,21 @@ struct CreateRecipeView: View {
                     fatPerServing: ingredient.fatPerServing
                 )
                 loggedFood.userId = userId
-                loggedFood.recipe = newRecipe
+                loggedFood.recipe = targetRecipe
                 modelContext.insert(loggedFood)
             }
 
             do {
                 try modelContext.save()
+                
+                // Track analytics for new recipes
+                if existingRecipe == nil {
+                    AnalyticsManager.shared.trackRecipeCreated(
+                        name: targetRecipe.name,
+                        ingredientCount: addedIngredients.count
+                    )
+                }
+                
                 dismiss()
             } catch {
                 print("Failed to save recipe: \(error.localizedDescription)")

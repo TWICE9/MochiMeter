@@ -229,3 +229,38 @@ extension CloudReminder: Codable {
         try container.encode(updated_at, forKey: .updated_at)
     }
 }
+
+struct CloudWeightLog: Sendable {
+    let id: String
+    let user_id: String
+    let weight_kg: Double
+    let note: String?
+    let timestamp: Date
+    let updated_at: Date
+}
+
+extension CloudWeightLog: Codable {
+    enum CodingKeys: String, CodingKey {
+        case id, user_id, weight_kg, note, timestamp, updated_at
+    }
+
+    nonisolated init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        user_id = try container.decode(String.self, forKey: .user_id)
+        weight_kg = try container.decode(Double.self, forKey: .weight_kg)
+        note = try container.decodeIfPresent(String.self, forKey: .note)
+        timestamp = try container.decode(Date.self, forKey: .timestamp)
+        updated_at = try container.decode(Date.self, forKey: .updated_at)
+    }
+
+    nonisolated func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(user_id, forKey: .user_id)
+        try container.encode(weight_kg, forKey: .weight_kg)
+        try container.encodeIfPresent(note, forKey: .note)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encode(updated_at, forKey: .updated_at)
+    }
+}

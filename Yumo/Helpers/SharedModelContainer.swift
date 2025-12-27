@@ -10,6 +10,7 @@ enum SharedModelContainer {
         let schema = Schema([
             LoggedFood.self,
             LoggedWater.self,
+            LoggedWeight.self,
             UserGoals.self,
             CommonFood.self,
             FastingLog.self,

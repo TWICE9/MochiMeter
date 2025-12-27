@@ -59,48 +59,45 @@ struct MainTabView: View {
                     
                     VStack {
                         Spacer()
-                        HStack {
-                            Spacer()
-                            VStack(alignment: .trailing, spacing: 12) {
-                                let buttons: [(String, String, String, Color, () -> Void)] = [
-                                    ("AI Scan", "Analyze with camera", "camera.viewfinder", Color("AppSecondaryAccent"), {
-                                        let haptic = UIImpactFeedbackGenerator(style: .medium); haptic.impactOccurred()
-                                        closeFabMenu { showAICameraView = true }
-                                    }),
-                                    ("Search", "Find or log foods", "magnifyingglass", Color("AppPrimaryAccent"), {
-                                        let haptic = UIImpactFeedbackGenerator(style: .medium); haptic.impactOccurred()
-                                        closeFabMenu {
-                                            tabRouter.selectedTab = .home
-                                            tabRouter.homePath = NavigationPath()
-                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                                tabRouter.homePath.append(HomeDestination.search)
-                                            }
+                        // Centered Horizontal Row
+                        HStack(spacing: 16) {
+                            let buttons: [(String, String, String, Color, () -> Void)] = [
+                                // Food (Left)
+                                ("Food", "Find or log foods", "magnifyingglass", Color("AppPrimaryAccent"), {
+                                    let haptic = UIImpactFeedbackGenerator(style: .medium); haptic.impactOccurred()
+                                    closeFabMenu {
+                                        tabRouter.selectedTab = .home
+                                        tabRouter.homePath = NavigationPath()
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                            tabRouter.homePath.append(HomeDestination.search)
                                         }
-                                    })
-                                ]
-
-                                VStack(spacing: 12) {
-                                    ForEach(Array(buttons.enumerated()), id: \.offset) { idx, item in
-                                        FabMenuButton(
-                                            title: item.0,
-                                            subtitle: item.1,
-                                            systemImage: item.2,
-                                            accent: item.3,
-                                            action: item.4
-                                        )
-                                        .opacity(showFabMenuItems ? 1 : 0)
-                                        .offset(y: showFabMenuItems ? 0 : 18)
-                                        .animation(.spring(response: 0.25, dampingFraction: 0.85).delay(0.03 + Double(idx) * 0.04), value: showFabMenuItems)
-                                        .frame(maxWidth: .infinity)
                                     }
-                                }
+                                }),
+                                // Scan (Right)
+                                ("Scan", "Camera & Barcodes", "camera.viewfinder", Color("AppSecondaryAccent"), {
+                                    let haptic = UIImpactFeedbackGenerator(style: .medium); haptic.impactOccurred()
+                                    closeFabMenu { showAICameraView = true }
+                                })
+                            ]
+
+                            ForEach(Array(buttons.enumerated()), id: \.offset) { idx, item in
+                                FabMenuButton(
+                                    title: item.0,
+                                    subtitle: item.1,
+                                    systemImage: item.2,
+                                    accent: item.3,
+                                    action: item.4
+                                )
+                                .opacity(showFabMenuItems ? 1 : 0)
+                                .scaleEffect(showFabMenuItems ? 1 : 0.8)
+                                .animation(.spring(response: 0.35, dampingFraction: 0.75).delay(0.05 + Double(idx) * 0.05), value: showFabMenuItems)
                             }
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                            .padding(.trailing, 24)
-                            .padding(.bottom, 40)
-                            .onAppear { animateFabMenuIn() }
-                            .onDisappear { showFabMenuItems = false }
                         }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 20) // Just above tab bar
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .onAppear { animateFabMenuIn() }
+                        .onDisappear { showFabMenuItems = false }
                     }
                 }
                 .transition(.opacity)
@@ -320,47 +317,54 @@ struct FabMenuButton: View {
     var body: some View {
         let isLight = colorScheme == .light
         Button(action: action) {
-            HStack(spacing: 12) {
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(title)
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(isLight ? .black : .white)
-                    Text(subtitle)
-                        .font(.callout)
-                        .foregroundStyle(isLight ? .black.opacity(0.6) : .white.opacity(0.7))
-                }
-                .frame(minWidth: 160, alignment: .trailing)
+            VStack(spacing: 12) {
                 Image(systemName: systemImage)
-                    .font(.title.weight(.bold))
+                    .font(.title.weight(.semibold))
                     .foregroundStyle(isLight ? .white : accent)
-                    .frame(width: 50, height: 50)
+                    .frame(width: 60, height: 60)
                     .background(
                         colorScheme == .light
                             ? accent
-                            : Color.white.opacity(0.15)
+                            : Color.white.opacity(0.12)
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                
+                VStack(spacing: 4) {
+                    Text(title)
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(isLight ? .black : .white)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(isLight ? .black.opacity(0.6) : .white.opacity(0.7))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .padding(.horizontal, 4)
+                }
             }
-            .padding(.vertical, 16)
-            .padding(.horizontal, 16)
-            .frame(width: 260)
+            .padding(16)
+            .frame(width: 165, height: 165) // Square Size
             .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(isLight ? Color.white : Color(red: 30/255, green: 30/255, blue: 34/255).opacity(0.95))
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(isLight ? Color.white : Color(red: 26/255, green: 26/255, blue: 32/255))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
                             .stroke(
-                                colorScheme == .light
-                                    ? Color.black.opacity(0.08)
-                                    : Color.white.opacity(0.15),
-                                lineWidth: 1.4
+                                .linearGradient(
+                                    colors: [
+                                        isLight ? .black.opacity(0.05) : .white.opacity(0.15),
+                                        isLight ? .black.opacity(0.02) : .white.opacity(0.05)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1
                             )
                     )
             )
             .shadow(
-                color: colorScheme == .light ? Color.black.opacity(0.12) : .black.opacity(0.5),
-                radius: 14,
-                y: 10
+                color: colorScheme == .light ? Color.black.opacity(0.15) : .black.opacity(0.4),
+                radius: 16,
+                y: 8
             )
         }
         .buttonStyle(.plain)

@@ -6,11 +6,14 @@
 import Foundation
 import SwiftUI
 
+@MainActor
 @Observable
 class OnboardingFlowManager {
     // MARK: - Navigation
     var currentPage: Int = 0
-    let totalPages: Int = 18  // Reduced by 1 - referral code page removed
+    let totalPages: Int = 19  // Added weight loss intensity page
+    var isNavigating: Bool = false
+    private let navigationCooldown: Double = 0.45  // Prevent rapid double-taps
 
     // MARK: - Collected Data
 
@@ -25,6 +28,7 @@ class OnboardingFlowManager {
     var activityLevel: ActivityLevel = .moderateActivity
     var weightGoal: GoalType = .maintain
     var targetWeight: Double = 70
+    var weeklyWeightChangeKg: Double = 0.5  // Default: 0.5kg per week (range: 0.25 to 1.0)
 
     // New Psychographic Fields
     var selectedBlockers: Set<Blocker> = []
@@ -39,45 +43,64 @@ class OnboardingFlowManager {
     }
 
     // MARK: - Navigation
-    func goNext() {
+    private func performNavigation(_ action: () -> Void) {
+        guard !isNavigating else { return }
+        isNavigating = true
+
         withAnimation(.spring(duration: 0.4)) {
-            // Skip target weight page (8) if weight goal is "maintain"
+            action()
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + navigationCooldown) { [weak self] in
+            self?.isNavigating = false
+        }
+    }
+
+    func goNext() {
+        guard canProceed(for: currentPage) else { return }
+
+        performNavigation {
+            // Skip target weight page (8) AND intensity page (9) if weight goal is "maintain"
             if currentPage == 7 && weightGoal == .maintain {
                 targetWeight = weight  // Set target to current weight
-                currentPage = min(currentPage + 2, totalPages - 1)  // Skip page 8
-            } else {
+                currentPage = min(currentPage + 3, totalPages - 1)  // Skip pages 8 and 9
+            }
+            // Skip intensity page (9) if weight goal is "gain" (target weight still needed)
+            else if currentPage == 8 && weightGoal == .gain {
+                currentPage = min(currentPage + 2, totalPages - 1)  // Skip page 9
+            }
+            else {
                 currentPage = min(currentPage + 1, totalPages - 1)
             }
         }
     }
 
     func goBack() {
-        withAnimation(.spring(duration: 0.4)) {
-            // Skip target weight page (8) when going back if weight goal is "maintain"
-            if currentPage == 9 && weightGoal == .maintain {
-                currentPage = max(currentPage - 2, 0)  // Skip back over page 8
-            } else {
+        performNavigation {
+            // Skip intensity page (9) AND target weight page (8) when going back if "maintain"
+            if currentPage == 10 && weightGoal == .maintain {
+                currentPage = max(currentPage - 3, 0)  // Skip back over pages 9 and 8
+            }
+            // Skip intensity page (9) when going back if weight goal is "gain"
+            else if currentPage == 10 && weightGoal == .gain {
+                currentPage = max(currentPage - 2, 0)  // Skip back over page 9
+            }
+            else {
                 currentPage = max(currentPage - 1, 0)
             }
         }
     }
 
     // MARK: - Validation
-    func canProceed(for page: Int) -> Bool {
+    func canProceed(for page: Int? = nil) -> Bool {
+        let page = page ?? currentPage
+
         switch page {
         case 2: // Name
             return !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        case 4: // Gender
-            return true // Always valid
-        case 5: // Activity Level
-            return true // Always valid
-        case 6: // Height & Weight
+        case 5: // Height & Weight
             return height > 0 && weight > 0
-        case 7: // Date of Birth
-            return true // Always valid
-        case 8: // Weight Goal
-            return true // Always valid
-        case 9: // Target Weight
+        case 8: // Target Weight
             return targetWeight > 0
         case 10: // What's Stopping You (multi-select)
             return !selectedBlockers.isEmpty
@@ -85,7 +108,6 @@ class OnboardingFlowManager {
             return dietType != nil
         case 12: // What to Accomplish (multi-select)
             return !selectedGoalsToAccomplish.isEmpty
-        // Referral code page removed (was case 15)
         default:
             return true
         }
@@ -105,6 +127,7 @@ class OnboardingFlowManager {
         goals.weightGoal = weightGoal
         // If maintaining weight, target should equal current weight
         goals.targetWeight = weightGoal == .maintain ? weight : targetWeight
+        goals.weeklyWeightChangeKg = weeklyWeightChangeKg
 
         // Psychographics
         goals.blockers = Array(selectedBlockers)
@@ -118,12 +141,13 @@ class OnboardingFlowManager {
         print("   Blockers: \(selectedBlockers.map { $0.rawValue })")
         print("   Diet Type: \(dietType?.rawValue ?? "nil")")
         print("   Goals: \(selectedGoalsToAccomplish.map { $0.rawValue })")
+        print("   Weekly Weight Change: \(weeklyWeightChangeKg) kg/week")
         print("   Raw arrays in goals object:")
         print("   - blockersRaw: \(goals.blockersRaw ?? [])")
         print("   - dietTypeRaw: \(goals.dietTypeRaw ?? "nil")")
         print("   - goalsToAccomplishRaw: \(goals.goalsToAccomplishRaw ?? [])")
 
-        // Calculate nutrition goals
+        // Calculate nutrition goals with dynamic deficit
         let age = HealthCalculator.calculateAge(birthDate: birthDate)
         let macros = HealthCalculator.calculateDailyGoals(
             gender: gender,
@@ -131,7 +155,8 @@ class OnboardingFlowManager {
             heightCm: height,
             age: age,
             activityLevel: activityLevel,
-            weightGoal: weightGoal
+            weightGoal: weightGoal,
+            weeklyWeightChangeKg: weeklyWeightChangeKg
         )
 
         goals.dailyCalories = macros.targetCalories

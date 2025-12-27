@@ -135,7 +135,7 @@ struct OnboardingScreen: View {
 
                                 if profileDownloaded {
                                     print("✅ Profile downloaded, skipping onboarding")
-                                    let userId = user.id.uuidString
+                                    let userId = user.id.uuidString.lowercased()
                                     await CloudSyncManager.shared.performFullSync(userId: userId, context: modelContext)
                                 } else {
                                     print("⚠️ No profile found, user should complete onboarding")
@@ -183,7 +183,7 @@ struct OnboardingScreen: View {
                         if let user = authManager.currentUser {
                             let profileDownloaded = await authManager.downloadAndSyncProfile(modelContext: modelContext)
                             if profileDownloaded {
-                                let userId = user.id.uuidString
+                                let userId = user.id.uuidString.lowercased()
                                 await CloudSyncManager.shared.performFullSync(userId: userId, context: modelContext)
                             }
                         }
@@ -637,7 +637,7 @@ struct OnboardingScreen: View {
 
             // Set userId if user is signed in
             if let user = authManager.currentUser {
-                goalsToUpdate.userId = user.id.uuidString
+                goalsToUpdate.userId = user.id.uuidString.lowercased()
             }
 
             if fetchedGoals == nil {

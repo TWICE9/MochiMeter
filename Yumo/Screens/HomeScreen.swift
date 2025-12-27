@@ -14,6 +14,39 @@ struct HomeScreen: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    
+    // MARK: - Adaptive Sizing for iPad
+    
+    /// Returns true if the device has regular horizontal size class (iPad)
+    private var isRegularWidth: Bool {
+        horizontalSizeClass == .regular
+    }
+    
+    /// Adaptive calorie ring size - larger on iPad
+    private var calorieRingSize: CGFloat {
+        isRegularWidth ? 330 : 220
+    }
+    
+    /// Adaptive calorie ring line width - thicker on iPad
+    private var calorieRingLineWidth: CGFloat {
+        isRegularWidth ? 42 : 28
+    }
+    
+    /// Adaptive macro ring size - larger on iPad
+    private var macroRingSize: CGFloat {
+        isRegularWidth ? 120 : 80
+    }
+    
+    /// Adaptive macro ring line width - thicker on iPad
+    private var macroRingLineWidth: CGFloat {
+        isRegularWidth ? 10 : 7
+    }
+    
+    /// Adaptive macro ring spacing - more space on iPad
+    private var macroRingSpacing: CGFloat {
+        isRegularWidth ? 36 : 24
+    }
 
     // MARK: - State & Animation
 
@@ -72,17 +105,6 @@ struct HomeScreen: View {
         NavigationStack(path: $tabRouter.homePath) {
             ZStack {
                 _buildDynamicBackground()
-
-                // Vignette spotlight effect to focus attention on the calorie ring
-                RadialGradient(
-                    colors: [.clear, Color("AppPrimaryDark").opacity(0.6)],
-                    center: .center,
-                    startRadius: 180,
-                    endRadius: 400
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
 
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -180,6 +202,7 @@ struct HomeScreen: View {
             // --- Modal Sheets ---
             .sheet(isPresented: $showWaterSheet) {
                 WaterScreen()
+                    .presentationDetents([.large])
             }
             .sheet(isPresented: $showFastingSheet) {
                 FastingScreen()
@@ -197,13 +220,12 @@ struct HomeScreen: View {
             }
             .onAppear {
                 // Refresh data every time HomeScreen appears (e.g., after logging food)
-                print("👁️ HomeScreen: .onAppear triggered")
+                // Refresh data every time HomeScreen appears (e.g., after logging food)
                 Task { await refreshData() }
             }
             .onChange(of: tabRouter.selectedTab) { oldTab, newTab in
                 // Refresh when user switches TO home tab
                 if newTab == .home {
-                    print("📱 HomeScreen: Tab switched to home, refreshing...")
                     // Quick delay to ensure SwiftData has processed any pending saves
                     Task {
                         try? await Task.sleep(nanoseconds: 50_000_000) // 0.05 seconds
@@ -216,7 +238,6 @@ struct HomeScreen: View {
                 }
             }
             .onChange(of: tabRouter.homeRefreshID) { _, _ in
-                print("🔔 HomeScreen: Received manual refresh trigger")
                 Task { await refreshData() }
             }
             .onChange(of: scenePhase) { _, newPhase in
@@ -231,7 +252,6 @@ struct HomeScreen: View {
                 updateAnimatedValues()
             }
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("FoodLogCreated"))) { _ in
-                print("🔔 HomeScreen: Received FoodLogCreated notification, refreshing...")
                 Task {
                     await refreshData()
                 }
@@ -256,41 +276,43 @@ struct HomeScreen: View {
         VStack(alignment: .leading, spacing: 16) {
             // Row 1: Title and Premium button
             HStack(alignment: .center) {
-                Text("Mochi meter")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                    .foregroundStyle(Color("AppTextPrimary"))
+                Image(colorScheme == .light ? "LogoHS" : "LogoDarkMode")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(height: 40)
 
                 Spacer()
 
-                Button {
-                    superwallManager.showPaywall()
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "sparkles")
-                            .font(.caption.bold())
-                        Text("Premium")
-                            .font(.caption.bold())
-                    }
-                    .foregroundStyle(.black)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(
-                        Group {
-                            if colorScheme == .light {
-                                Color("AppSecondaryAccent")
-                            } else {
-                                LinearGradient(
-                                    colors: [Color("AppSecondaryAccent"), Color("AppPrimaryAccent")],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            }
+                if !superwallManager.isPremium {
+                    Button {
+                        superwallManager.showPaywall()
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "sparkles")
+                                .font(.caption.bold())
+                            Text("Premium")
+                                .font(.caption.bold())
                         }
-                    )
-                    .clipShape(Capsule())
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(
+                            Group {
+                                if colorScheme == .light {
+                                    Color("AppSecondaryAccent")
+                                } else {
+                                    LinearGradient(
+                                        colors: [Color("AppSecondaryAccent"), Color("AppPrimaryAccent")],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                }
+                            }
+                        )
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
 
             // Row 2: Compact streak badge
@@ -398,30 +420,37 @@ struct HomeScreen: View {
 
     @ViewBuilder
     private func _buildCalorieWheel() -> some View {
-        VStack(spacing: 28) {
+        VStack(spacing: isRegularWidth ? 40 : 28) {
             let goalValue = goals.dailyCalories > 0 ? goals.dailyCalories : 1
             let progress = max(0, min(animatedCalories / goalValue, 1))
             let isOverGoal = animatedCalories > goals.dailyCalories
             let overflowProgress = min(animatedOverflowCalories / goalValue, 1.0)
+            
+            // Adaptive font sizes for iPad
+            let calorieFontSize: CGFloat = isRegularWidth ? 64 : 46
+            let waterButtonSize: CGFloat = isRegularWidth ? 56 : 42
+            let waterButtonOffset: CGFloat = isRegularWidth ? 42 : 28
 
             ZStack {
-                // Background ring (thinner)
-                Circle().stroke(Color("AppTextPrimary").opacity(0.08), lineWidth: 28).frame(width: 220, height: 220)
+                // Background ring
+                Circle()
+                    .stroke(Color("AppTextPrimary").opacity(0.08), lineWidth: calorieRingLineWidth)
+                    .frame(width: calorieRingSize, height: calorieRingSize)
 
-                // Progress ring (thinner stroke)
+                // Progress ring
                 Circle()
                     .trim(from: 0, to: progress)
                     .stroke(
                         AngularGradient(
                             gradient: Gradient(colors: colorScheme == .light
-                                ? [Color(red: 0.3, green: 0.7, blue: 0.4), Color(red: 0.2, green: 0.5, blue: 0.9), Color(red: 0.3, green: 0.7, blue: 0.4)]
+                                ? [Color(red: 0.0, green: 0.75, blue: 1.0), Color(red: 0.0, green: 0.45, blue: 1.0), Color(red: 0.0, green: 0.75, blue: 1.0)]
                                 : [Color("AppSecondaryAccent"), Color("AppPrimaryAccent"), Color("AppSecondaryAccent")]),
                             center: .center
                         ),
-                        style: StrokeStyle(lineWidth: 28, lineCap: .round)
+                        style: StrokeStyle(lineWidth: calorieRingLineWidth, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
-                    .frame(width: 220, height: 220)
+                    .frame(width: calorieRingSize, height: calorieRingSize)
                     .opacity(progress > 0 ? 1 : 0)
                     .animation(.easeOut(duration: 1.2), value: progress)
 
@@ -439,20 +468,20 @@ struct HomeScreen: View {
                             startAngle: .degrees(0),
                             endAngle: .degrees(360 * max(overflowProgress, 0.01))
                         ),
-                        style: StrokeStyle(lineWidth: 28, lineCap: .round)
+                        style: StrokeStyle(lineWidth: calorieRingLineWidth, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
-                    .frame(width: 220, height: 220)
+                    .frame(width: calorieRingSize, height: calorieRingSize)
                     .opacity(overflowProgress > 0 ? 1 : 0)
 
                 // Center text
-                VStack(spacing: 4) {
+                VStack(spacing: isRegularWidth ? 6 : 4) {
                     Text("\(Int(animatedCalories))")
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                        .font(.custom("MochibopBold", size: calorieFontSize))
                         .foregroundColor(isOverGoal ? .red : Color("AppTextPrimary"))
                         .contentTransition(.numericText())
                     Text("of \(Int(goals.dailyCalories)) kcal")
-                        .font(.headline)
+                        .font(isRegularWidth ? .title3 : .headline)
                         .foregroundColor(Color("AppTextPrimary").opacity(0.7))
                 }
 
@@ -465,45 +494,47 @@ struct HomeScreen: View {
                             showWaterSheet = true
                         } label: {
                             Image(systemName: "drop.fill")
-                                .font(.title3)
+                                .font(isRegularWidth ? .title2 : .title3)
                                 .foregroundStyle(Color("AppTextPrimary"))
-                                .frame(width: 42, height: 42)
+                                .frame(width: waterButtonSize, height: waterButtonSize)
                                 .background(
                                     ZStack {
-                                        Circle()
+                                        BlobShape()
                                             .fill(.cyan.opacity(0.2))
-                                        Circle()
+                                            .rotationEffect(.degrees(30))
+                                        BlobShape()
                                             .stroke(.cyan.opacity(0.6), lineWidth: 2)
+                                            .rotationEffect(.degrees(30))
                                     }
                                 )
                         }
-                        .offset(x: 28, y: -28)
+                        .offset(x: waterButtonOffset, y: -waterButtonOffset)
                     }
                     Spacer()
                 }
-                .frame(width: 220, height: 220)
+                .frame(width: calorieRingSize, height: calorieRingSize)
             }
             .onTapGesture {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             }
-            .padding(.bottom, 16)
+            .padding(.bottom, isRegularWidth ? 24 : 16)
 
-            // Thinner macro rings
-            HStack(spacing: 24) {
-                MacroProgressRing(macroName: "Protein", current: animatedProtein, goal: goals.dailyProtein, color: .pink, lineWidth: 7, ringSize: 80)
-                    .frame(width: 80, height: 80)
-                MacroProgressRing(macroName: "Carbs", current: animatedCarbs, goal: goals.dailyCarbs, color: colorScheme == .light ? Color(red: 0.2, green: 0.5, blue: 0.9) : Color("AppSecondaryAccent"), lineWidth: 7, ringSize: 80)
-                    .frame(width: 80, height: 80)
-                MacroProgressRing(macroName: "Fat", current: animatedFat, goal: goals.dailyFat, color: .orange, lineWidth: 7, ringSize: 80)
-                    .frame(width: 80, height: 80)
+            // Macro rings with adaptive sizing
+            HStack(spacing: macroRingSpacing) {
+                MacroProgressRing(macroName: "Protein", current: animatedProtein, goal: goals.dailyProtein, color: .pink, lineWidth: macroRingLineWidth, ringSize: macroRingSize)
+                    .frame(width: macroRingSize, height: macroRingSize)
+                MacroProgressRing(macroName: "Carbs", current: animatedCarbs, goal: goals.dailyCarbs, color: colorScheme == .light ? Color(red: 0.2, green: 0.5, blue: 0.9) : Color("AppSecondaryAccent"), lineWidth: macroRingLineWidth, ringSize: macroRingSize)
+                    .frame(width: macroRingSize, height: macroRingSize)
+                MacroProgressRing(macroName: "Fat", current: animatedFat, goal: goals.dailyFat, color: .orange, lineWidth: macroRingLineWidth, ringSize: macroRingSize)
+                    .frame(width: macroRingSize, height: macroRingSize)
             }
-            .padding(.horizontal, 32)
+            .padding(.horizontal, isRegularWidth ? 48 : 32)
             .animation(.easeOut(duration: 0.9), value: animatedProtein)
             .animation(.easeOut(duration: 0.9), value: animatedCarbs)
             .animation(.easeOut(duration: 0.9), value: animatedFat)
         }
-        .padding(.top, 10)
-        .padding(.horizontal, 24)
+        .padding(.top, isRegularWidth ? 16 : 10)
+        .padding(.horizontal, isRegularWidth ? 32 : 24)
     }
     
     
@@ -574,7 +605,8 @@ struct HomeScreen: View {
 
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 16)
-                        .fill(log.isAnalyzing ? Color("AppSecondaryAccent").opacity(0.08) : Color("AppTextPrimary").opacity(0.08))
+                        .fill(log.isAnalyzing ? Color("AppSecondaryAccent").opacity(0.12) : Color("AppTextPrimary").opacity(colorScheme == .light ? 0.05 : 0.12))
+
 
                     // Left image band ~25%
                     HStack(spacing: 0) {
@@ -760,7 +792,8 @@ struct HomeScreen: View {
             .frame(maxWidth: .infinity, minHeight: 118, maxHeight: 118, alignment: .topLeading)
             .background(
                 RoundedRectangle(cornerRadius: 16)
-                    .fill(Color("AppTextPrimary").opacity(0.05))
+                    .fill(Color("AppTextPrimary").opacity(colorScheme == .light ? 0.05 : 0.12))
+
             )
             .padding(.horizontal, 24)
         }
@@ -896,14 +929,8 @@ struct HomeScreen: View {
 
     @MainActor
     private func refreshData() async {
-        print("🔄 HomeScreen: Refreshing data...")
-
         // Fetch user-scoped data
         allFoodLogs = await UserScopedQuery.fetchFoodLogs(context: modelContext)
-
-        print("📊 HomeScreen: Fetched \(allFoodLogs.count) total food logs")
-        print("📊 HomeScreen: Today's logs: \(foodLogsToday.count)")
-        print("📊 HomeScreen: Total calories: \(totalCaloriesToday)")
 
         if let fetchedGoals = await UserScopedQuery.fetchUserGoals(context: modelContext) {
             goals = fetchedGoals
@@ -922,6 +949,9 @@ struct HomeScreen: View {
         // Schedule meal reminders (every 4 hours from 7am-9pm if no recent logs)
         await scheduleMealReminders()
 
+        // Schedule weekly weight logging reminder
+        await scheduleWeeklyWeightReminder()
+
         // Update animations with new data
         updateAnimatedValues()
     }
@@ -932,9 +962,6 @@ struct HomeScreen: View {
         let newTotalProtein = totalProteinToday
         let newTotalCarbs = totalCarbsToday
         let newTotalFat = totalFatToday
-
-        print("🎬 HomeScreen: updateAnimatedValues() called")
-        print("🎬 Old animated calories: \(animatedCalories) → New: \(newTotalCalories)")
 
         // Smooth update to avoid ring popping when dropping to zero
         withAnimation(.easeOut(duration: 0.9)) {
@@ -965,8 +992,6 @@ struct HomeScreen: View {
                 animatedOverflowCalories = 0
             }
         }
-
-        print("🎬 HomeScreen: Animated values updated immediately")
     }
     
     private func delete(log: LoggedFood) {
@@ -1045,6 +1070,9 @@ struct HomeScreen: View {
 
         // Haptic feedback
         UINotificationFeedbackGenerator().notificationOccurred(.success)
+        
+        // Track analytics for quick meal usage
+        AnalyticsManager.shared.track(.quickMealUsed)
 
         // Try to find a cached food first, then fall back to AI
         Task.detached(priority: .userInitiated) { @MainActor [weak modelContext = self.modelContext] in
@@ -1052,7 +1080,6 @@ struct HomeScreen: View {
 
             // First, try to find a similar food in master_foods cache
             if let cachedFood = await self.findCachedFood(for: trimmed) {
-                print("📦 CACHE HIT - Using cached food: \(cachedFood.foodName)")
 
                 // Update placeholder with cached data
                 placeholderLog.name = cachedFood.foodName
@@ -1085,7 +1112,6 @@ struct HomeScreen: View {
 
             // Second, try USDA database for verified nutritional data
             if let usdaFood = await self.findUSDAFood(for: trimmed) {
-                print("🥗 USDA HIT - Using verified data: \(usdaFood.foodName)")
 
                 // Update placeholder with USDA data
                 placeholderLog.name = usdaFood.foodName
@@ -1116,7 +1142,6 @@ struct HomeScreen: View {
             }
 
             // No cache or USDA hit - use AI analysis as fallback
-            print("🌐 CACHE MISS - Using AI for: \(trimmed)")
             do {
                 let analysis = try await AIFoodScanner.shared.analyzeMealDescription(trimmed)
 
@@ -1141,27 +1166,13 @@ struct HomeScreen: View {
                 if let userId = userId {
                     Task {
                         await CloudSyncManager.shared.uploadFoodLogImmediately(placeholderLog, userId: userId)
-                        await CloudScanUploader.shared.incrementScanCount(
-                            for: analysis.generateAIBarcode(),
-                            name: analysis.name,
-                            brand: "AI Analyzed",
-                            caloriesPerServing: analysis.calories,
-                            proteinPerServing: analysis.protein,
-                            carbsPerServing: analysis.carbs,
-                            fatPerServing: analysis.fat,
-                            fiberPerServing: analysis.fiber,
-                            sugarPerServing: analysis.sugar,
-                            saltPerServing: 0,
-                            potassiumPerServing: 0,
-                            servingAmount: 1.0
-                        )
+                        // Use reliable client-side upsert to ensure food gets into master_foods
+                        try? await SupabaseService().upsertAIFood(AIFoodUpload(from: analysis))
                     }
                 }
 
                 // Trigger refresh notification
                 NotificationCenter.default.post(name: Notification.Name("FoodLogCreated"), object: nil)
-
-                print("✅ Quick meal logged and analyzed: \(analysis.name)")
 
             } catch {
                 // On error, delete the placeholder
@@ -1218,15 +1229,15 @@ struct HomeScreen: View {
                 let queryWordCoverage = queryWords.isEmpty ? 0 : Double(commonWords.count) / Double(queryWords.count)
                 let foodWordCoverage = foodWords.isEmpty ? 0 : Double(commonWords.count) / Double(foodWords.count)
 
-                // Require high bidirectional match (both ways must be >= 0.85)
-                // This prevents "bacon egg mcmuffin" from matching "double bacon egg mcmuffin"
-                if queryWordCoverage >= 0.85 && foodWordCoverage >= 0.85 {
+                // Require very high bidirectional match (both ways must be >= 0.95)
+                // This prevents loose matches that return different dishes
+                if queryWordCoverage >= 0.95 && foodWordCoverage >= 0.95 {
                     return food
                 }
 
-                // Also check string similarity for very close matches
+                // Also check string similarity for very close matches (95%+)
                 let similarity = calculateSimilarity(normalizedQuery, normalizedFoodName)
-                if similarity > 0.9 {
+                if similarity > 0.95 {
                     return food
                 }
             }
@@ -1271,15 +1282,15 @@ struct HomeScreen: View {
                     }
                 }
 
-                // If most query words match, consider it a hit
+                // Require high coverage - user must have entered most key words (90%+)
                 let coverage = queryWords.isEmpty ? 0 : Double(matchingWords.count) / Double(queryWords.count)
-                if coverage >= 0.75 {
+                if coverage >= 0.90 {
                     return food
                 }
 
-                // Also check string similarity
+                // Also check string similarity - require 95%+ match
                 let similarity = calculateSimilarity(normalizedQuery, normalizedFoodName)
-                if similarity > 0.8 {
+                if similarity > 0.95 {
                     return food
                 }
             }
@@ -1403,7 +1414,9 @@ struct HomeScreen: View {
         guard goals.dailyCalories > 0 else { return [] }
         let calendar = Calendar.current
         let today = Date().startOfDay
-        let grouped = Dictionary(grouping: allFoodLogs) { calendar.startOfDay(for: $0.timestamp) }
+        // Exclude recipe ingredients from streak calculation
+        let standaloneLogs = allFoodLogs.filter { $0.recipe == nil }
+        let grouped = Dictionary(grouping: standaloneLogs) { calendar.startOfDay(for: $0.timestamp) }
 
         var streakDates = Set<Date>()
 
@@ -1449,7 +1462,9 @@ struct HomeScreen: View {
         guard goals.dailyCalories > 0 else { return (0, false) }
         let calendar = Calendar.current
         let today = Date().startOfDay
-        let grouped = Dictionary(grouping: allFoodLogs) { calendar.startOfDay(for: $0.timestamp) }
+        // Exclude recipe ingredients from streak calculation
+        let standaloneLogs = allFoodLogs.filter { $0.recipe == nil }
+        let grouped = Dictionary(grouping: standaloneLogs) { calendar.startOfDay(for: $0.timestamp) }
 
         // Check if today has logs
         let todayLogs = grouped[today] ?? []
@@ -1500,6 +1515,18 @@ struct HomeScreen: View {
     // MARK: - Notifications
 
     private func scheduleMealReminders() async {
+        // Check if user has enabled meal reminders
+        guard goals.mealRemindersEnabled else {
+            // Remove any existing reminders if disabled
+            let center = UNUserNotificationCenter.current()
+            center.removePendingNotificationRequests(withIdentifiers: [
+                "MealReminder830AM",
+                "MealReminder12PM",
+                "MealReminder7PM"
+            ])
+            return
+        }
+        
         let center = UNUserNotificationCenter.current()
         let settings = await center.notificationSettings()
 
@@ -1594,6 +1621,74 @@ struct HomeScreen: View {
             }
         }
     }
+
+    private func scheduleWeeklyWeightReminder() async {
+        // Check if user has enabled weekly weight reminders
+        guard goals.weeklyWeightReminderEnabled else {
+            // Remove any existing reminders if disabled
+            let center = UNUserNotificationCenter.current()
+            center.removePendingNotificationRequests(withIdentifiers: ["WeeklyWeightReminder"])
+            return
+        }
+        
+        let center = UNUserNotificationCenter.current()
+        let reminderId = "WeeklyWeightReminder"
+        
+        // Check if notifications are authorized
+        let settings = await center.notificationSettings()
+        guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else {
+            return
+        }
+        
+        // Remove any existing weekly weight reminder
+        center.removePendingNotificationRequests(withIdentifiers: [reminderId])
+        
+        // Check if user has logged weight this week
+        let hasLoggedThisWeek = await checkIfWeightLoggedThisWeek()
+        
+        // If already logged this week, don't schedule a reminder
+        if hasLoggedThisWeek {
+            return
+        }
+        
+        // Schedule notification for next Monday at 9:00 AM
+        var dateComponents = DateComponents()
+        dateComponents.weekday = 2  // Monday (1 = Sunday, 2 = Monday, etc.)
+        dateComponents.hour = 9
+        dateComponents.minute = 0
+        
+        let content = UNMutableNotificationContent()
+        content.title = "Weekly Weight Check-In"
+        content.body = "Don't forget to log your weight this week! Track your progress and stay motivated."
+        content.sound = .default
+        content.categoryIdentifier = "WEIGHT_REMINDER"
+        
+        // Use repeating trigger to fire every Monday
+        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
+        let request = UNNotificationRequest(identifier: reminderId, content: content, trigger: trigger)
+        
+        try? await center.add(request)
+    }
+    
+    private func checkIfWeightLoggedThisWeek() async -> Bool {
+        let calendar = Calendar.current
+        let now = Date()
+        
+        // Get the start of the current week (Monday)
+        guard let weekStart = calendar.dateInterval(of: .weekOfYear, for: now)?.start else {
+            return false
+        }
+        
+        // Fetch weight logs
+        let weightLogs = await UserScopedQuery.fetchWeightLogs(context: modelContext)
+        
+        // Check if any weight log exists in the current week
+        let logsThisWeek = weightLogs.filter { log in
+            log.timestamp >= weekStart && log.timestamp <= now
+        }
+        
+        return !logsThisWeek.isEmpty
+    }
     
     // MARK: - Background Functions
     
@@ -1601,13 +1696,21 @@ struct HomeScreen: View {
     private func _buildDynamicBackground() -> some View {
         ZStack {
             Color("AppPrimaryDark", bundle: nil).ignoresSafeArea()
-            RadialGradient(gradient: Gradient(colors: [Color("AppSecondaryAccent").opacity(0.3), .clear]), center: .topLeading, startRadius: 50, endRadius: 450)
-                .offset(offset1).offset(x: -150, y: -150).ignoresSafeArea()
-            RadialGradient(gradient: Gradient(colors: [Color("AppPrimaryAccent").opacity(0.4), .clear]), center: .bottomTrailing, startRadius: 100, endRadius: 500)
-                .offset(offset2).offset(x: 100, y: 150).ignoresSafeArea()
+            
+            if colorScheme == .light {
+                RadialGradient(gradient: Gradient(colors: [Color("AppSecondaryAccent").opacity(0.3), .clear]), center: .topLeading, startRadius: 50, endRadius: 450)
+                    .offset(offset1).offset(x: -150, y: -150).ignoresSafeArea()
+            } else {
+                // Subtle Dark Mode Lighting - Increased visibility
+                RadialGradient(gradient: Gradient(colors: [Color.white.opacity(0.15), .clear]), center: .topLeading, startRadius: 50, endRadius: 500)
+                    .offset(offset1).offset(x: -100, y: -100).ignoresSafeArea()
+                RadialGradient(gradient: Gradient(colors: [Color.white.opacity(0.08), .clear]), center: .bottomTrailing, startRadius: 50, endRadius: 450)
+                    .offset(offset2).offset(x: 100, y: 100).ignoresSafeArea()
+                RadialGradient(gradient: Gradient(colors: [Color.white.opacity(0.06), .clear]), center: .bottomLeading, startRadius: 60, endRadius: 350)
+                    .offset(offset1).offset(x: -50, y: 120).ignoresSafeArea()
+            }
         }
-        .blur(radius: 40)
-        .opacity(0.7)
+        .blur(radius: 60)
         .onAppear { animateOrbs() }
     }
     
@@ -1651,6 +1754,7 @@ struct AsyncThumbnailImage: View {
                     .scaledToFill()
                     .frame(width: size, height: size)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
             } else {
                 // Simple placeholder (no ProgressView to avoid animation overhead)
                 ZStack {
@@ -1672,7 +1776,9 @@ struct AsyncThumbnailImage: View {
     private func decodeImage() async {
         // Check cache first
         if let cached = await ThumbnailCache.shared.image(for: photoData) {
-            loadedImage = cached
+            withAnimation(.easeOut(duration: 0.3)) {
+                loadedImage = cached
+            }
             return
         }
 
@@ -1688,7 +1794,9 @@ struct AsyncThumbnailImage: View {
 
         // Update UI on main thread
         await MainActor.run {
-            loadedImage = image
+            withAnimation(.easeOut(duration: 0.3)) {
+                loadedImage = image
+            }
         }
     }
 }
@@ -1750,8 +1858,9 @@ struct DateButton: View {
             }
             .frame(width: 60, height: 60)
             .background(
-                Circle()
+                BlobShape()
                     .fill(backgroundColor)
+                    .rotationEffect(.degrees(Double((Calendar.current.ordinality(of: .day, in: .era, for: date) ?? 0) * 137 % 360)))
             )
         }
         .buttonStyle(.plain)
@@ -1864,5 +1973,40 @@ struct AnalyzingProgressView: View {
         .onAppear {
             isSpinning = true
         }
+    }
+}
+
+// MARK: - Blob Shape
+struct BlobShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let w = rect.size.width
+        let h = rect.size.height
+        
+        // Start top center
+        path.move(to: CGPoint(x: w * 0.5, y: 0))
+        
+        // Top right curve (bulge out)
+        path.addCurve(to: CGPoint(x: w, y: h * 0.55),
+                      control1: CGPoint(x: w * 0.9, y: 0.05),
+                      control2: CGPoint(x: w, y: h * 0.3))
+        
+        // Bottom right curve
+        path.addCurve(to: CGPoint(x: w * 0.55, y: h),
+                      control1: CGPoint(x: w, y: h * 0.8),
+                      control2: CGPoint(x: w * 0.85, y: h))
+        
+        // Bottom left curve (tuck in)
+        path.addCurve(to: CGPoint(x: 0, y: h * 0.45),
+                      control1: CGPoint(x: w * 0.25, y: h),
+                      control2: CGPoint(x: 0, y: h * 0.75))
+        
+        // Top left curve
+        path.addCurve(to: CGPoint(x: w * 0.5, y: 0),
+                      control1: CGPoint(x: 0, y: h * 0.2),
+                      control2: CGPoint(x: w * 0.2, y: 0))
+        
+        path.closeSubpath()
+        return path
     }
 }

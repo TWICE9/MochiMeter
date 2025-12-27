@@ -43,11 +43,10 @@ struct NamePage: View {
                             }
                         }
                         .onSubmit {
-                            if canProceed {
-                                // Trim whitespace before proceeding
-                                flowManager.name = trimmedName
-                                flowManager.goNext()
-                            }
+                            guard canProceed, !flowManager.isNavigating else { return }
+                            // Trim whitespace before proceeding
+                            flowManager.name = trimmedName
+                            flowManager.goNext()
                         }
 
                     // Character count indicator
@@ -73,7 +72,7 @@ struct NamePage: View {
 
                 ContinueButton(
                     title: "Continue",
-                    isEnabled: canProceed
+                    isEnabled: canProceed && !flowManager.isNavigating
                 ) {
                     // Trim whitespace before proceeding
                     flowManager.name = trimmedName

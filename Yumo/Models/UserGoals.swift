@@ -90,7 +90,8 @@ final class UserGoals {
     var appearanceModeRaw: String = "System"
 
     var targetWeight: Double  // Stored in kg
-    
+    var weeklyWeightChangeKg: Double = 0.5  // kg per week (0.25 to 1.0 typical for weight loss)
+
     // --- Computed properties for easy access ---
     // This lets the rest of our app use the enum safely
     var gender: Gender {
@@ -169,6 +170,11 @@ final class UserGoals {
     var dietTypeRaw: String?
     var goalsToAccomplishRaw: [String]?
     var referralCode: String?
+    
+    // --- Notification Preferences ---
+    var mealRemindersEnabled: Bool = true
+    var weeklyWeightReminderEnabled: Bool = true
+    
     var healthKitEnabled: Bool
     
     init(

@@ -34,22 +34,22 @@ struct NewOnboardingScreen: View {
                 case 6: DateOfBirthPage(flowManager: flowManager)
                 case 7: WeightGoalPage(flowManager: flowManager)
                 case 8: TargetWeightPage(flowManager: flowManager)
-                case 9: BlockersPage(flowManager: flowManager)
-                case 10: DietTypePage(flowManager: flowManager)
-                case 11: GoalsToAccomplishPage(flowManager: flowManager)
-                case 12:
+                case 9: WeightLossIntensityPage(flowManager: flowManager)  // NEW: Weight loss intensity slider
+                case 10: BlockersPage(flowManager: flowManager)
+                case 11: DietTypePage(flowManager: flowManager)
+                case 12: GoalsToAccomplishPage(flowManager: flowManager)
+                case 13:
                     ThankYouAnimationView {
                         flowManager.goNext()
                     }
-                case 13: HealthKitPermissionPage(flowManager: flowManager)
-                // Referral code page removed (was case 14)
-                case 14: DoneScreenPage(flowManager: flowManager)
-                case 15:
+                case 14: HealthKitPermissionPage(flowManager: flowManager)
+                case 15: DoneScreenPage(flowManager: flowManager)
+                case 16:
                     LoadingScreenView {
                         flowManager.goNext()
                     }
-                case 16: GoalsSummaryPage(flowManager: flowManager)
-                case 17: SignInPage(flowManager: flowManager, authManager: authManager, modelContext: modelContext, onFinish: onFinish)
+                case 17: GoalsSummaryPage(flowManager: flowManager)
+                case 18: SignInPage(flowManager: flowManager, authManager: authManager, modelContext: modelContext, onFinish: onFinish)
                 default: EmptyView()
                 }
             }
@@ -122,7 +122,7 @@ struct FeatureScreenPage: View {
 
             Spacer()
 
-            ContinueButton(title: "Next", isEnabled: true) {
+            ContinueButton(title: "Next", isEnabled: !flowManager.isNavigating) {
                 flowManager.goNext()
             }
         }
@@ -150,7 +150,7 @@ struct DateOfBirthPage: View {
 
             Spacer().frame(height: 20)
 
-            ContinueButton(title: "Continue", isEnabled: true) {
+            ContinueButton(title: "Continue", isEnabled: !flowManager.isNavigating) {
                 flowManager.goNext()
             }
         }
@@ -180,7 +180,7 @@ struct TargetWeightPage: View {
 
             Spacer().frame(height: 20)
 
-            ContinueButton(title: "Continue", isEnabled: flowManager.canProceed(for: 9)) {
+            ContinueButton(title: "Continue", isEnabled: flowManager.canProceed() && !flowManager.isNavigating) {
                 flowManager.goNext()
             }
         }
@@ -206,15 +206,23 @@ struct HealthKitPermissionPage: View {
                     .foregroundColor(Color("AppSecondaryAccent"))
 
                 Button {
+                    guard !flowManager.isNavigating else { return }
                     Task {
                         do {
                             try await healthKitManager.requestAuthorization()
-                            flowManager.healthKitEnabled = true
+                            await MainActor.run {
+                                flowManager.healthKitEnabled = true
+                            }
                         } catch {
                             print("HealthKit authorization failed: \(error)")
-                            flowManager.healthKitEnabled = false
+                            await MainActor.run {
+                                flowManager.healthKitEnabled = false
+                            }
                         }
-                        flowManager.goNext()
+                        await MainActor.run {
+                            guard !flowManager.isNavigating else { return }
+                            flowManager.goNext()
+                        }
                     }
                 } label: {
                     Text("Allow Access")
@@ -226,8 +234,10 @@ struct HealthKitPermissionPage: View {
                         .background(Color("AppSecondaryAccent"))
                         .cornerRadius(16)
                 }
+                .disabled(flowManager.isNavigating)
 
                 Button {
+                    guard !flowManager.isNavigating else { return }
                     flowManager.healthKitEnabled = false
                     flowManager.goNext()
                 } label: {
@@ -235,6 +245,7 @@ struct HealthKitPermissionPage: View {
                         .font(.headline)
                         .foregroundColor(OnboardingTheme.secondaryText(colorScheme))
                 }
+                .disabled(flowManager.isNavigating)
             }
             .padding(.horizontal)
         }
@@ -271,14 +282,16 @@ struct ReferralCodePage: View {
 
             Spacer().frame(height: 20)
 
-            ContinueButton(title: "Continue", isEnabled: true) {
+            ContinueButton(title: "Continue", isEnabled: !flowManager.isNavigating) {
                 flowManager.goNext()
             }
 
             Button("Skip") {
+                guard !flowManager.isNavigating else { return }
                 flowManager.referralCode = ""
                 flowManager.goNext()
             }
+            .disabled(flowManager.isNavigating)
             .foregroundColor(OnboardingTheme.secondaryText(colorScheme))
             .padding()
         }
@@ -311,7 +324,7 @@ struct DoneScreenPage: View {
 
             Spacer()
 
-            ContinueButton(title: "Let's Go!", isEnabled: true) {
+            ContinueButton(title: "Let's Go!", isEnabled: !flowManager.isNavigating) {
                 flowManager.goNext()
             }
         }
@@ -341,7 +354,7 @@ struct GoalsSummaryPage: View {
                 )
                 .padding()
 
-                ContinueButton(title: "Continue", isEnabled: true) {
+                ContinueButton(title: "Continue", isEnabled: !flowManager.isNavigating) {
                     flowManager.goNext()
                 }
             }
@@ -559,7 +572,7 @@ struct SignInPage: View {
         // Set userId if signed in (name comes from flowManager, not email)
         if let user = authManager.currentUser {
             print("🏁 [SignInPage] User is signed in: \(user.id) (\(user.email ?? "no email"))")
-            goalsToSave.userId = user.id.uuidString
+            goalsToSave.userId = user.id.uuidString.lowercased()
         } else {
             print("🏁 [SignInPage] No user signed in, skipping cloud upload")
         }

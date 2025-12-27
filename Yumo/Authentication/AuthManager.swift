@@ -89,6 +89,10 @@ final class AuthManager: ObservableObject {
             self.currentUser = nil
             // Clear userId from UserSession
             await UserSession.shared.clearUserId()
+            
+            // Track sign-out and reset analytics identity
+            AnalyticsManager.shared.trackSignOut()
+            AnalyticsManager.shared.reset()
         } catch {
             print("⚠️ Error signing out:", error)
         }
@@ -97,22 +101,121 @@ final class AuthManager: ObservableObject {
     // MARK: - Complete Sign In (with data migration)
     /// This should be called after successful sign-in to migrate offline data and set userId
     func completeSignIn(user: User, modelContext: ModelContext) async {
-        let userId = user.id.uuidString
+        // IMPORTANT: Supabase auth.uid() returns lowercase UUID, so we must match that format
+        let userId = user.id.uuidString.lowercased()
+        let uppercaseUserId = user.id.uuidString // Old format (uppercase)
 
-        // 1. Check if there's offline data to migrate
+        // 1. Migrate existing data from uppercase userId to lowercase (fixes case mismatch)
+        await migrateUserIdCase(from: uppercaseUserId, to: userId, context: modelContext)
+
+        // 2. Check if there's offline data to migrate
         let hasOfflineData = await DataMigrationService.shared.hasOfflineData(context: modelContext)
 
         if hasOfflineData {
-            print("📦 Found offline data, starting migration...")
+            #if DEBUG
+            print("Found offline data, starting migration...")
+            #endif
             await DataMigrationService.shared.migrateOfflineDataToUser(userId: userId, context: modelContext)
-        } else {
-            print("✅ No offline data to migrate")
         }
 
-        // 2. Set the userId in UserSession (for app and widgets)
+        // 3. Set the userId in UserSession (for app and widgets)
         await UserSession.shared.setUserId(userId)
-
-        print("✅ Sign-in complete. UserId set: \(userId)")
+        
+        // 4. Identify user in analytics
+        AnalyticsManager.shared.identify(userId: userId, properties: [
+            "email": user.email ?? ""
+        ])
+    }
+    
+    /// Migrates local data from uppercase userId to lowercase userId
+    private func migrateUserIdCase(from oldUserId: String, to newUserId: String, context: ModelContext) async {
+        guard oldUserId != newUserId else { return } // Already lowercase
+        
+        #if DEBUG
+        print("🔄 Migrating userId from \(oldUserId) to \(newUserId)")
+        #endif
+        
+        // Migrate food logs
+        let foodPredicate = #Predicate<LoggedFood> { $0.userId == oldUserId }
+        if let foodLogs = try? context.fetch(FetchDescriptor(predicate: foodPredicate)) {
+            for log in foodLogs {
+                log.userId = newUserId
+            }
+            #if DEBUG
+            print("  → Migrated \(foodLogs.count) food logs")
+            #endif
+        }
+        
+        // Migrate water logs
+        let waterPredicate = #Predicate<LoggedWater> { $0.userId == oldUserId }
+        if let waterLogs = try? context.fetch(FetchDescriptor(predicate: waterPredicate)) {
+            for log in waterLogs {
+                log.userId = newUserId
+            }
+            #if DEBUG
+            print("  → Migrated \(waterLogs.count) water logs")
+            #endif
+        }
+        
+        // Migrate weight logs
+        let weightPredicate = #Predicate<LoggedWeight> { $0.userId == oldUserId }
+        if let weightLogs = try? context.fetch(FetchDescriptor(predicate: weightPredicate)) {
+            for log in weightLogs {
+                log.userId = newUserId
+            }
+            #if DEBUG
+            print("  → Migrated \(weightLogs.count) weight logs")
+            #endif
+        }
+        
+        // Migrate fasting logs
+        let fastingPredicate = #Predicate<FastingLog> { $0.userId == oldUserId }
+        if let fastingLogs = try? context.fetch(FetchDescriptor(predicate: fastingPredicate)) {
+            for log in fastingLogs {
+                log.userId = newUserId
+            }
+            #if DEBUG
+            print("  → Migrated \(fastingLogs.count) fasting logs")
+            #endif
+        }
+        
+        // Migrate recipes
+        let recipePredicate = #Predicate<Recipe> { $0.userId == oldUserId }
+        if let recipes = try? context.fetch(FetchDescriptor(predicate: recipePredicate)) {
+            for recipe in recipes {
+                recipe.userId = newUserId
+            }
+            #if DEBUG
+            print("  → Migrated \(recipes.count) recipes")
+            #endif
+        }
+        
+        // Migrate reminders
+        let reminderPredicate = #Predicate<Reminder> { $0.userId == oldUserId }
+        if let reminders = try? context.fetch(FetchDescriptor(predicate: reminderPredicate)) {
+            for reminder in reminders {
+                reminder.userId = newUserId
+            }
+            #if DEBUG
+            print("  → Migrated \(reminders.count) reminders")
+            #endif
+        }
+        
+        // Migrate user goals
+        let goalsPredicate = #Predicate<UserGoals> { $0.userId == oldUserId }
+        if let goals = try? context.fetch(FetchDescriptor(predicate: goalsPredicate)) {
+            for goal in goals {
+                goal.userId = newUserId
+            }
+            #if DEBUG
+            print("  → Migrated \(goals.count) user goals")
+            #endif
+        }
+        
+        try? context.save()
+        #if DEBUG
+        print("✅ userId case migration complete")
+        #endif
     }
 
     // MARK: - Begin Apple Sign In
@@ -177,7 +280,9 @@ final class AuthManager: ObservableObject {
                 fullName: fullName
             )
 
-            print("🍏 Logged in as: \(user.email ?? "Unknown")")
+            #if DEBUG
+            print("Apple Sign-In successful")
+            #endif
 
             // Note: completeSignIn() should be called from the view that has access to modelContext
 
@@ -197,20 +302,26 @@ final class AuthManager: ObservableObject {
             fullName: fullName
         )
 
-        print("📧 Signed up with email: \(user.email ?? "Unknown")")
+        #if DEBUG
+        print("Email sign-up successful")
+        #endif
     }
 
     // MARK: - Email Sign In
     func signInWithEmail(email: String, password: String) async throws {
         let user = try await authService.signInWithEmail(email: email, password: password)
         self.currentUser = user
-        print("📧 Signed in with email: \(user.email ?? "Unknown")")
+        #if DEBUG
+        print("Email sign-in successful")
+        #endif
     }
 
     // MARK: - Reset Password
     func resetPassword(email: String) async throws {
         try await authService.resetPassword(email: email)
-        print("📧 Password reset email sent to: \(email)")
+        #if DEBUG
+        print("Password reset email sent")
+        #endif
     }
 
     // MARK: - Google Sign In
@@ -224,7 +335,9 @@ final class AuthManager: ObservableObject {
             fullName: fullName
         )
 
-        print("🔵 Signed in with Google: \(user.email ?? "Unknown")")
+        #if DEBUG
+        print("Google sign-in successful")
+        #endif
     }
 
     // MARK: - Upload onboarding data
@@ -235,7 +348,9 @@ final class AuthManager: ObservableObject {
             return
         }
 
-        print("📤 Starting onboarding sync for user: \(user.id) (\(user.email ?? "no email"))")
+        #if DEBUG
+        print("Starting onboarding sync...")
+        #endif
 
         do {
             try await userService.uploadOnboardingData(
@@ -291,7 +406,7 @@ final class AuthManager: ObservableObject {
             }
 
             // Fetch or create user goals
-            let userId = user.id.uuidString
+            let userId = user.id.uuidString.lowercased()
             let fetchedGoals = await UserScopedQuery.fetchUserGoals(context: modelContext)
             let goalsToUpdate = fetchedGoals ?? UserGoals()
 

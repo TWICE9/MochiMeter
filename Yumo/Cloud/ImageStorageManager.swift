@@ -18,6 +18,14 @@ actor ImageStorageManager {
 
     private init() {}
 
+    // MARK: - Private Helpers
+
+    /// Generates a random suffix to make storage paths unpredictable
+    private func generateRandomSuffix(length: Int = 8) -> String {
+        let characters = "abcdefghijklmnopqrstuvwxyz0123456789"
+        return String((0..<length).map { _ in characters.randomElement()! })
+    }
+
     // MARK: - Upload Image
 
     /// Uploads an image to Supabase Storage and returns the storage path
@@ -29,11 +37,15 @@ actor ImageStorageManager {
     func uploadImage(imageData: Data, userId: String, logId: String) async -> String? {
         // Compress the image first
         guard let compressedData = compressImage(data: imageData) else {
-            print("❌ Failed to compress image")
+            #if DEBUG
+            print("Failed to compress image")
+            #endif
             return nil
         }
 
-        let storagePath = "\(userId)/\(logId).jpg"
+        // Add random suffix to prevent enumeration attacks
+        let randomSuffix = generateRandomSuffix()
+        let storagePath = "\(userId)/\(logId)_\(randomSuffix).jpg"
 
         do {
             try await supabase.storage
@@ -47,10 +59,14 @@ actor ImageStorageManager {
                     )
                 )
 
-            print("✅ Image uploaded: \(storagePath) (\(compressedData.count / 1024)KB)")
+            #if DEBUG
+            print("Image uploaded successfully")
+            #endif
             return storagePath
         } catch {
-            print("❌ Failed to upload image: \(error)")
+            #if DEBUG
+            print("Failed to upload image: \(error.localizedDescription)")
+            #endif
             return nil
         }
     }
@@ -66,10 +82,14 @@ actor ImageStorageManager {
                 .from(bucketName)
                 .download(path: path)
 
-            print("✅ Image downloaded: \(path) (\(data.count / 1024)KB)")
+            #if DEBUG
+            print("Image downloaded successfully")
+            #endif
             return data
         } catch {
-            print("❌ Failed to download image: \(error)")
+            #if DEBUG
+            print("Failed to download image: \(error.localizedDescription)")
+            #endif
             return nil
         }
     }
@@ -84,9 +104,13 @@ actor ImageStorageManager {
                 .from(bucketName)
                 .remove(paths: [path])
 
-            print("✅ Image deleted: \(path)")
+            #if DEBUG
+            print("Image deleted successfully")
+            #endif
         } catch {
-            print("❌ Failed to delete image: \(error)")
+            #if DEBUG
+            print("Failed to delete image: \(error.localizedDescription)")
+            #endif
         }
     }
 

@@ -62,6 +62,7 @@ struct OnboardingQuestionView<Content: View>: View {
                 }
                 .padding(.horizontal, 24)
             }
+            .scrollIndicators(.hidden)
         }
     }
 }
