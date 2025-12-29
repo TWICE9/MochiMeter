@@ -163,8 +163,8 @@ struct AIFoodUpload: @unchecked Sendable {
         self.fat = result.fat
         self.fiber = result.fiber
         self.sugar = result.sugar
-        self.salt = 0
-        self.potassium = 0
+        self.salt = result.salt
+        self.potassium = result.potassium
         self.scan_count = 1
         self.updated_at = ISO8601DateFormatter().string(from: Date())
     }

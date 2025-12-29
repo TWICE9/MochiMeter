@@ -66,7 +66,7 @@ struct RemindersView: View {
                                     Text(reminder.time, style: .time)
                                         .font(.subheadline).bold()
                                 }
-                                .foregroundStyle(reminder.isEnabled ? Color("AppSecondaryAccent") : .gray.opacity(0.7))
+                                .foregroundStyle(reminder.isEnabled ? (colorScheme == .light ? Color(red: 0.4, green: 0.4, blue: 0.4) : Color("AppSecondaryAccent")) : .gray.opacity(0.7))
                             }
 
                             Spacer()
@@ -84,7 +84,7 @@ struct RemindersView: View {
                         }
                         // ⭐️ FIX: Styling applied to CONTENT, not the row
                         .padding()
-                        .background(Color.white.opacity(0.1))
+                        .background(colorScheme == .light ? Color.black.opacity(0.04) : Color.white.opacity(0.1))
                         .clipShape(RoundedRectangle(cornerRadius: 16))
                         
                         // ⭐️ FIX: Make the system row transparent

@@ -17,8 +17,11 @@ struct ThankYouAnimationView: View {
         VStack(spacing: 30) {
             Spacer()
 
-            Text("🙏")
-                .font(.system(size: 80))
+            Image(colorScheme == .dark ? "LogoDarkMode" : "LogoHS")
+                .renderingMode(.original)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(maxWidth: 200, maxHeight: 200)
                 .opacity(opacity)
                 .scaleEffect(scale)
 

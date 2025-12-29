@@ -2,6 +2,7 @@
 
 import SwiftUI
 import SwiftData
+import Auth
 
 struct MainTabView: View {
 
@@ -11,12 +12,13 @@ struct MainTabView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     @StateObject private var tabRouter = TabRouter()
+    @EnvironmentObject var themeManager: ThemeManager
 
     // Simple initialization of FastingManager (NO ARGUMENTS)
     @StateObject private var fastingManager = FastingManager()
 
     // ADDED: Create the view model for the shopping list
-    @StateObject private var shoppingListVM = ShoppingListViewModel()
+
 
     @State private var offset1: CGSize = .zero
     @State private var offset2: CGSize = .zero
@@ -33,14 +35,17 @@ struct MainTabView: View {
                     switch tabRouter.selectedTab {
                     case .home:
                         HomeScreen()
-                            .environmentObject(shoppingListVM)
+
                             .environmentObject(fastingManager)
+                            .environmentObject(themeManager)
                 case .reports:
-                    ReportsView()
+                    ReportsView(userId: authManager.currentUser?.id.uuidString.lowercased() ?? "")
+                        .environmentObject(themeManager)
                     case .settings:
                         SettingsScreen()
                             .environmentObject(fastingManager)
-                            .environmentObject(shoppingListVM)
+
+                            .environmentObject(themeManager)
                     }
                 }
                 .id(tabRouter.selectedTab)
@@ -63,7 +68,7 @@ struct MainTabView: View {
                         HStack(spacing: 16) {
                             let buttons: [(String, String, String, Color, () -> Void)] = [
                                 // Food (Left)
-                                ("Food", "Find or log foods", "magnifyingglass", Color("AppPrimaryAccent"), {
+                                ("Food", "Find or log foods", "magnifyingglass", themeManager.currentTheme.buttonGradient(for: colorScheme)[0], {
                                     let haptic = UIImpactFeedbackGenerator(style: .medium); haptic.impactOccurred()
                                     closeFabMenu {
                                         tabRouter.selectedTab = .home
@@ -74,7 +79,7 @@ struct MainTabView: View {
                                     }
                                 }),
                                 // Scan (Right)
-                                ("Scan", "Camera & Barcodes", "camera.viewfinder", Color("AppSecondaryAccent"), {
+                                ("Scan", "Camera & Barcodes", "camera.viewfinder", themeManager.currentTheme.buttonGradient(for: colorScheme)[1], {
                                     let haptic = UIImpactFeedbackGenerator(style: .medium); haptic.impactOccurred()
                                     closeFabMenu { showAICameraView = true }
                                 })
@@ -174,8 +179,8 @@ struct MainTabView: View {
             ? Color.white.opacity(0.08)
             : Color.black.opacity(0.05)
         let activeColor: Color = colorScheme == .dark
-            ? Color.white
-            : Color("AppPrimaryAccent")
+            ? themeManager.currentTheme.darkPrimaryColor
+            : themeManager.currentTheme.primaryColor
         let inactiveColor: Color = colorScheme == .dark
             ? Color.white.opacity(0.5)
             : Color.black.opacity(0.45)
@@ -247,18 +252,14 @@ struct MainTabView: View {
                         Circle()
                             .fill(
                                 LinearGradient(
-                                    colors: colorScheme == .light
-                                        ? [Color(red: 0.3, green: 0.7, blue: 0.4), Color(red: 0.2, green: 0.5, blue: 0.9)]
-                                        : [Color("AppPrimaryAccent"), Color("AppSecondaryAccent")],
+                                    colors: themeManager.currentTheme.buttonGradient(for: colorScheme),
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 )
                             )
                             .frame(width: 60, height: 60)
                             .shadow(
-                                color: colorScheme == .light
-                                    ? Color(red: 0.2, green: 0.5, blue: 0.9).opacity(0.4)
-                                    : Color("AppPrimaryAccent").opacity(0.35),
+                                color: (colorScheme == .light ? themeManager.currentTheme.primaryColor : themeManager.currentTheme.darkPrimaryColor).opacity(0.4),
                                 radius: 10,
                                 y: 4
                             )

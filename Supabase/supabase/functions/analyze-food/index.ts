@@ -1,14 +1,52 @@
-// Supabase Edge Function to analyze food images using OpenAI GPT-4o Mini
+// Supabase Edge Function to analyze food images using OpenAI GPT-5 Mini
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const openAIKey = Deno.env.get('OPENAI_API_KEY')
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+
+// CORS headers - restricted to Supabase and app origins
+const allowedOrigins = [
+  Deno.env.get("SUPABASE_URL") ?? "",
+  "capacitor://localhost",
+  "ionic://localhost",
+  "http://localhost",
+]
+
+function getCorsHeaders(req: Request) {
+  const origin = req.headers.get("Origin") ?? ""
+  const isAllowed = allowedOrigins.some((allowed) => origin.startsWith(allowed)) || origin === ""
+  return {
+    "Access-Control-Allow-Origin": isAllowed ? origin || "*" : allowedOrigins[0],
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  }
+}
+
+// Simple in-memory rate limiting (per user, resets on function cold start)
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>()
+const RATE_LIMIT = 20
+const RATE_WINDOW_MS = 60 * 1000
+
+function checkRateLimit(userId: string): boolean {
+  const now = Date.now()
+  const userLimit = rateLimitMap.get(userId)
+
+  if (!userLimit || now > userLimit.resetTime) {
+    rateLimitMap.set(userId, { count: 1, resetTime: now + RATE_WINDOW_MS })
+    return true
+  }
+
+  if (userLimit.count >= RATE_LIMIT) {
+    return false
+  }
+
+  userLimit.count++
+  return true
 }
 
 serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req)
+
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -31,7 +69,15 @@ serve(async (req) => {
       throw new Error('Unauthorized')
     }
 
-    console.log(`📸 Food scan request from user: ${user.id}`)
+    // Check rate limit
+    if (!checkRateLimit(user.id)) {
+      return new Response(
+        JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      )
+    }
+
+    console.log("Food scan request received")
 
     // Get image from request
     const { imageBase64 } = await req.json()
@@ -40,9 +86,9 @@ serve(async (req) => {
       throw new Error('No image provided')
     }
 
-    console.log('🤖 Calling OpenAI GPT-4o Mini...')
+    console.log('🤖 Calling OpenAI GPT-5 Mini (Low Latency)...')
 
-    // Call OpenAI GPT-4o Mini with Vision
+    // Call OpenAI GPT-5 Mini with Vision
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -50,35 +96,23 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-mini',
+        // Forces the model to only output valid JSON syntax
+        response_format: { type: "json_object" },
+        // Reduces latency by skipping deep reasoning for simple identification
+        reasoning_effort: "minimal",
         messages: [
           {
             role: 'system',
-            content: `You are a nutrition expert with comprehensive knowledge of restaurant menus, fast food nutritional data, and packaged food labels.
-
-CRITICAL RULES:
-1. If you recognize BRANDED packaging (McDonald's, Starbucks, etc.) or restaurant-style food: Use ACTUAL published nutritional data.
-2. For home-cooked/generic foods: Use USDA database averages for the visible portions.
-3. Be CONSERVATIVE - when uncertain, estimate on the LOWER end.
-4. Carefully assess ACTUAL visible portion size - don't overestimate.
-
-Return ONLY valid JSON, no markdown.`
+            content: `You are a nutrition expert. If you recognize BRANDED packaging (McDonald's, Starbucks, etc.) or restaurant-style food, use ACTUAL published nutritional data. For home-cooked/generic foods, use USDA averages. Be CONSERVATIVE. Return ONLY valid JSON, no markdown.`
           },
           {
             role: 'user',
             content: [
               {
                 type: 'text',
-                text: `Analyze this food image. Identify if it's branded/restaurant food (use actual nutrition data) or generic (estimate conservatively).
-
-INSTRUCTIONS:
-- Look for brand logos, packaging, or restaurant presentation
-- Assess actual visible portion size carefully
-- Use REAL nutritional data for known items
-- Be conservative with estimates for unknown items
-
-Return JSON:
-{"name":"<specific name>","servingSize":"<portion>","calories":<num>,"protein":<g>,"carbs":<g>,"fat":<g>,"fiber":<g>,"sugar":<g>,"confidence":"high/medium/low","ingredients":["<i1>","<i2>"]}`
+                text: `Analyze this food image and return a JSON object with this structure:
+                {"name":"string","servingSize":"string","calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sugar":number,"confidence":"high|medium|low","ingredients":[]}`
               },
               {
                 type: 'image_url',
@@ -90,32 +124,38 @@ Return JSON:
             ]
           }
         ],
-        max_tokens: 300,
-        temperature: 0.2
+        // Required parameter for 5-series models
+        max_completion_tokens: 800
       })
     })
 
     if (!response.ok) {
       const errorData = await response.json()
       console.error('OpenAI API error:', errorData)
-      throw new Error(`OpenAI API error: ${response.status}`)
+      throw new Error(`OpenAI API error: ${errorData.error?.message || response.status}`)
     }
 
     const data = await response.json()
     console.log('✅ OpenAI response received')
 
-    // Extract and parse the nutrition data
+    // Extract the content
     const content = data.choices[0].message.content
 
-    // Remove markdown code blocks if present
-    const cleanContent = content
-      .replace(/```json\n?/g, '')
-      .replace(/```\n?/g, '')
-      .trim()
+    // Robust JSON cleaning to handle markdown artifacts
+    const jsonMatch = content.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) {
+      throw new Error("No valid JSON found in AI response")
+    }
 
-    const nutritionData = JSON.parse(cleanContent)
+    let nutritionData
+    try {
+      nutritionData = JSON.parse(jsonMatch[0])
+    } catch (parseError) {
+      console.error("Failed to parse AI response as JSON:", content)
+      throw new Error("Failed to parse nutrition data from AI response")
+    }
 
-    console.log(`📊 Analysis complete: ${nutritionData.name} - ${nutritionData.calories} cal`)
+    console.log("Food analysis complete for:", nutritionData.name)
 
     return new Response(
       JSON.stringify(nutritionData),

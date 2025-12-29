@@ -17,9 +17,12 @@ struct SingleMacroEditSheet: View {
         self.macro = macro
         self.goals = goals
         self.onClose = onClose
+        let isKJ = macro == .calories && goals.energyUnit == .kilojoules
+        let multiplier = isKJ ? 4.184 : 1.0
+
         switch macro {
         case .calories:
-            _value = State(initialValue: log.caloriesPerServing)
+            _value = State(initialValue: log.caloriesPerServing * multiplier)
         case .carbs:
             _value = State(initialValue: log.carbsPerServing)
         case .protein:
@@ -57,7 +60,7 @@ struct SingleMacroEditSheet: View {
                                     .foregroundStyle(secondaryTextColor)
                             }
                             Spacer()
-                            Text("\(value, specifier: "%.1f")\(macro.unit)")
+                            Text("\(value, specifier: "%.1f")\(displayedUnit)")
                                 .font(.title3.bold())
                                 .foregroundStyle(primaryTextColor)
                         }
@@ -82,7 +85,7 @@ struct SingleMacroEditSheet: View {
                                     .onChange(of: value) { _, newValue in
                                         value = macro == .calories ? InputValidation.capCalories(newValue) : InputValidation.capMacro(newValue)
                                     }
-                                Text(macro.unit)
+                                Text(displayedUnit)
                                     .foregroundStyle(secondaryTextColor)
                             }
                             .padding()
@@ -124,8 +127,11 @@ struct SingleMacroEditSheet: View {
     }
 
     private func save() {
+        let isKJ = macro == .calories && goals.energyUnit == .kilojoules
+        let multiplier = isKJ ? 4.184 : 1.0
+
         switch macro {
-        case .calories: log.caloriesPerServing = value
+        case .calories: log.caloriesPerServing = value / multiplier
         case .carbs: log.carbsPerServing = value
         case .protein: log.proteinPerServing = value
         case .fat: log.fatPerServing = value
@@ -188,5 +194,12 @@ struct SingleMacroEditSheet: View {
         colorScheme == .dark
             ? Color.white.opacity(0.04)
             : Color.black.opacity(0.05)
+    }
+
+    private var displayedUnit: String {
+        if macro == .calories && goals.energyUnit == .kilojoules {
+            return "kJ"
+        }
+        return macro.unit
     }
 }

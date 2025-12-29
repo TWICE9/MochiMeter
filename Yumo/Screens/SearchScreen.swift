@@ -92,6 +92,15 @@ struct SearchScreen: View {
     @EnvironmentObject private var tabRouter: TabRouter
 
     @Query private var allCommonFoods: [CommonFood]
+    @Query private var userGoals: [UserGoals]
+    
+    private var energyUnit: EnergyUnit {
+        userGoals.first?.energyUnit ?? .calories
+    }
+    
+    private func convertEnergy(_ kcal: Double) -> Double {
+        energyUnit == .kilojoules ? kcal * 4.184 : kcal
+    }
 
     @State private var recentScans: [LoggedFood] = []
     @State private var recentLoggedFoods: [LoggedFood] = []
@@ -164,12 +173,25 @@ struct SearchScreen: View {
                             quickAction(
                                 icon: "square.and.pencil",
                                 title: "Recipes",
-                                subtitle: "Create or edit",
+                                subtitle: "Create & edit",
                                 accent: Color("AppPrimaryAccent")
                             )
                         }
                         .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity)
+                        
+                        NavigationLink(value: HomeDestination.savedFoods) {
+                            quickAction(
+                                icon: "star.fill",
+                                title: "Saved",
+                                subtitle: "Favorites",
+                                accent: .yellow
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity)
                     }
+                    .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 24)
 
                     // Results Section
@@ -916,26 +938,36 @@ struct SearchScreen: View {
     }
     
     private func quickAction(icon: String, title: String, subtitle: String, accent: Color) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Image(systemName: icon)
                 .font(.title3)
                 .foregroundStyle(accent)
                 .frame(width: 40, height: 40)
                 .background(Color.white.opacity(0.08))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-            VStack(alignment: .leading, spacing: 4) {
+            
+            VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.headline)
                     .foregroundStyle(adaptiveTextColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                
                 Text(subtitle)
                     .font(.caption)
                     .foregroundStyle(adaptiveSecondaryTextColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
-            Spacer()
+            
+            Spacer(minLength: 0)
+            
             Image(systemName: "chevron.right")
                 .foregroundStyle(adaptiveSecondaryTextColor)
         }
-        .padding(16)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(cardBackground())
     }
     
@@ -1001,7 +1033,7 @@ struct SearchScreen: View {
             }
 
             let nutriments = product.nutriments ?? OFFNutriments.empty
-            Text("\(nutriments.servingCalories, specifier: "%.0f") kcal")
+            Text("\(convertEnergy(nutriments.servingCalories), specifier: "%.0f") \(energyUnit.unitLabel)")
                 .font(.callout).bold()
                 .foregroundStyle(Color("AppSecondaryAccent"))
         }
@@ -1019,7 +1051,7 @@ struct SearchScreen: View {
             if food.isHalal {
                 Text("✅").font(.caption).padding(5).background(.green.opacity(0.2)).clipShape(Circle())
             }
-            Text("\(food.caloriesPerServing, specifier: "%.0f") kcal").font(.callout).bold().foregroundStyle(Color("AppSecondaryAccent"))
+            Text("\(convertEnergy(food.caloriesPerServing), specifier: "%.0f") \(energyUnit.unitLabel)").font(.callout).bold().foregroundStyle(Color("AppSecondaryAccent"))
             }
         .padding().background(cardBackground())
     }
@@ -1044,7 +1076,7 @@ struct SearchScreen: View {
             if masterFood.isHalal {
                 Text("✅").font(.caption).padding(5).background(.green.opacity(0.2)).clipShape(Circle())
             }
-            Text("\(masterFood.caloriesPerServing, specifier: "%.0f") kcal").font(.callout).bold().foregroundStyle(Color("AppSecondaryAccent"))
+            Text("\(convertEnergy(masterFood.caloriesPerServing), specifier: "%.0f") \(energyUnit.unitLabel)").font(.callout).bold().foregroundStyle(Color("AppSecondaryAccent"))
         }
         .padding().background(cardBackground())
     }
@@ -1061,7 +1093,7 @@ struct SearchScreen: View {
                 Text(usdaFood.servingSizeDescription).font(.caption).foregroundStyle(adaptiveSecondaryTextColor)
             }
             Spacer()
-            Text("\(usdaFood.caloriesPerServing, specifier: "%.0f") kcal").font(.callout).bold().foregroundStyle(Color("AppSecondaryAccent"))
+            Text("\(convertEnergy(usdaFood.caloriesPerServing), specifier: "%.0f") \(energyUnit.unitLabel)").font(.callout).bold().foregroundStyle(Color("AppSecondaryAccent"))
         }
         .padding().background(cardBackground())
     }

@@ -57,8 +57,8 @@ actor AIFoodScanner {
             throw FoodScanError.invalidRequest
         }
 
-        // Text analysis is faster - use shorter timeout and single retry
-        let response: FoodAnalysisResult = try await analyzeWithRetry(body: jsonData, functionName: "analyze-meal-text", timeout: 10, maxAttempts: 1)
+        // Text analysis - use 20 second timeout and single retry
+        let response: FoodAnalysisResult = try await analyzeWithRetry(body: jsonData, functionName: "analyze-meal-text", timeout: 20, maxAttempts: 1)
 
         return response
     }
@@ -141,6 +141,7 @@ actor AIFoodScanner {
 }
 
 // MARK: - Models
+// MARK: - Models
 struct FoodAnalysisResult: Codable, Sendable {
     let name: String
     let servingSize: String
@@ -150,15 +151,17 @@ struct FoodAnalysisResult: Codable, Sendable {
     let fat: Double
     let fiber: Double
     let sugar: Double
+    let salt: Double // Added support
+    let potassium: Double // Added support
     let confidence: String?
     let ingredients: [String]?
 
     enum CodingKeys: String, CodingKey {
-        case name, servingSize, calories, protein, carbs, fat, fiber, sugar, confidence, ingredients
+        case name, servingSize, calories, protein, carbs, fat, fiber, sugar, salt, potassium, confidence, ingredients
     }
 
     // Regular memberwise initializer
-    init(name: String, servingSize: String, calories: Double, protein: Double, carbs: Double, fat: Double, fiber: Double, sugar: Double, confidence: String? = nil, ingredients: [String]? = nil) {
+    init(name: String, servingSize: String, calories: Double, protein: Double, carbs: Double, fat: Double, fiber: Double, sugar: Double, salt: Double = 0, potassium: Double = 0, confidence: String? = nil, ingredients: [String]? = nil) {
         self.name = name
         self.servingSize = servingSize
         self.calories = calories
@@ -167,6 +170,8 @@ struct FoodAnalysisResult: Codable, Sendable {
         self.fat = fat
         self.fiber = fiber
         self.sugar = sugar
+        self.salt = salt
+        self.potassium = potassium
         self.confidence = confidence
         self.ingredients = ingredients
     }
@@ -180,13 +185,16 @@ struct FoodAnalysisResult: Codable, Sendable {
         confidence = try container.decodeIfPresent(String.self, forKey: .confidence)
         ingredients = try container.decodeIfPresent([String].self, forKey: .ingredients)
 
-        // Decode and validate numeric values (inline to avoid MainActor isolation)
+        // Decode and validate numeric values
+        // Use decodeIfPresent for new fields to maintain backward compatibility with old backend responses
         let rawCalories = try container.decode(Double.self, forKey: .calories)
         let rawProtein = try container.decode(Double.self, forKey: .protein)
         let rawCarbs = try container.decode(Double.self, forKey: .carbs)
         let rawFat = try container.decode(Double.self, forKey: .fat)
         let rawFiber = try container.decode(Double.self, forKey: .fiber)
         let rawSugar = try container.decode(Double.self, forKey: .sugar)
+        let rawSalt = try container.decodeIfPresent(Double.self, forKey: .salt) ?? 0
+        let rawPotassium = try container.decodeIfPresent(Double.self, forKey: .potassium) ?? 0
 
         // Apply validation caps (max 10,000 cal, 1,000g macros)
         calories = min(max(rawCalories, 0), 10_000)
@@ -195,6 +203,8 @@ struct FoodAnalysisResult: Codable, Sendable {
         fat = min(max(rawFat, 0), 1_000)
         fiber = min(max(rawFiber, 0), 1_000)
         sugar = min(max(rawSugar, 0), 1_000)
+        salt = min(max(rawSalt, 0), 1_000)
+        potassium = min(max(rawPotassium, 0), 5_000) // Higher cap for potassium (mg)
     }
 
     // Manual encoder to maintain Codable conformance
@@ -208,6 +218,8 @@ struct FoodAnalysisResult: Codable, Sendable {
         try container.encode(fat, forKey: .fat)
         try container.encode(fiber, forKey: .fiber)
         try container.encode(sugar, forKey: .sugar)
+        try container.encode(salt, forKey: .salt)
+        try container.encode(potassium, forKey: .potassium)
         try container.encodeIfPresent(confidence, forKey: .confidence)
         try container.encodeIfPresent(ingredients, forKey: .ingredients)
     }
@@ -251,8 +263,8 @@ extension FoodAnalysisResult {
             fatPerServing: fat,
             fiberPerServing: fiber,
             sugarPerServing: sugar,
-            saltPerServing: 0, // GPT doesn't estimate salt yet
-            potassiumPerServing: 0, // GPT doesn't estimate potassium yet
+            saltPerServing: salt,
+            potassiumPerServing: potassium,
             barcode: nil,
             brand: "AI Analyzed",
             isHalal: false

@@ -1354,16 +1354,34 @@ struct FixAIResultSheet: View {
         colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.06)
     }
 
+    @State private var showHelp = false
+
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 16) {
+                VStack(spacing: 20) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Improve this result")
-                            .font(.headline)
-                            .foregroundStyle(primaryTextColor)
-                        Text("Tell us what should be corrected. Examples: \"It's beef, not chicken\", \"Serving is 0.5\", \"Add rice 1 cup\", \"Calories seem high\".")
-                            .font(.subheadline)
+                        HStack {
+                            Text("Improve Result")
+                                .font(.title3.bold())
+                                .foregroundStyle(primaryTextColor)
+                            
+                            Spacer()
+                            
+                            Button {
+                                showHelp = true
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "questionmark.circle")
+                                    Text("Help")
+                                }
+                                .font(.subheadline)
+                                .foregroundStyle(Color("AppSecondaryAccent"))
+                            }
+                        }
+                        
+                        Text("Describe what needs to be fixed.")
+                            .font(.body)
                             .foregroundStyle(secondaryTextColor)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1373,45 +1391,64 @@ struct FixAIResultSheet: View {
 
                     TextEditor(text: $correction)
                         .frame(height: 120)
-                        .padding(10)
+                        .padding(16)
                         .background(inputBackgroundColor)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
                         .foregroundStyle(primaryTextColor)
                         .scrollContentBackground(.hidden)
                         .focused($isTextEditorFocused)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(colorScheme == .dark ? .white.opacity(0.1) : .black.opacity(0.1), lineWidth: 1)
+                        )
 
                     if let errorMessage {
-                        Text(errorMessage)
-                            .foregroundStyle(.red)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .onTapGesture {
-                                isTextEditorFocused = false
-                            }
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.red)
+                            Text(errorMessage)
+                                .foregroundStyle(.red)
+                                .font(.subheadline)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 4)
                     }
 
                     Button {
                         applyFix()
                     } label: {
-                        Text("Apply fix")
+                        Text("Apply Correction")
+                            .font(.headline)
                             .fontWeight(.semibold)
                             .foregroundStyle(colorScheme == .dark ? .black : .white)
                             .frame(maxWidth: .infinity)
                             .padding()
                             .background(Color("AppSecondaryAccent"))
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                            .shadow(color: Color("AppSecondaryAccent").opacity(0.3), radius: 8, y: 4)
                     }
                     .disabled(correction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .padding(.bottom, 20)
+                    .opacity(correction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.6 : 1.0)
                 }
-                .padding(20)
+                .padding(24)
             }
-            .scrollDismissesKeyboard(.immediately)
+            .scrollDismissesKeyboard(.interactively)
             .background(backgroundColor.ignoresSafeArea())
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
+                    Button("Cancel") { dismiss() }
                         .foregroundStyle(secondaryTextColor)
                 }
+            }
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    isTextEditorFocused = true
+                }
+            }
+            .alert("How to fix results", isPresented: $showHelp) {
+                Button("Got it", role: .cancel) { }
+            } message: {
+                Text("You can tell the AI to correct specific details. Examples:\n\n• \"It's actually Grilled Chicken\"\n• \"Portion is half\"\n• \"Remove the rice\"\n• \"Calories should be 500\"\n• \"Add a banana\"")
             }
         }
     }

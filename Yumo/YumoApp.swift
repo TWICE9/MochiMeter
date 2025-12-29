@@ -7,6 +7,7 @@ import SwiftData
 import UserNotifications
 import Combine
 import GoogleSignIn
+import Auth
 
 // MARK: - Deep Link Manager
 @MainActor
@@ -122,6 +123,12 @@ struct YumoApp: App {
 
     // Deep link manager
     @StateObject private var deepLinkManager = DeepLinkManager.shared
+    
+    // Theme manager for mochi colors
+    @StateObject private var themeManager = ThemeManager()
+    
+    // Ad manager for AdMob
+    @StateObject private var adManager = AdManager.shared
 
     // Shared SwiftData container using App Group storage
     let container: ModelContainer = SharedModelContainer.create()
@@ -129,14 +136,22 @@ struct YumoApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .id(authManager.currentUser?.id)
                 .environmentObject(authManager)
                 .environmentObject(superwallManager)
                 .environmentObject(deepLinkManager)
+                .environmentObject(themeManager)
+                .environmentObject(adManager)
                 .modelContainer(container)
 
                 // Initialize Superwall
                 .task {
                     superwallManager.configure()
+                    // Check premium status on launch to avoid unnecessary paywalls
+                    await superwallManager.checkPremiumStatus()
+                    
+                    // Initialize AdMob
+                    adManager.initializeAds()
                 }
 
                 // Apply user's appearance mode preference

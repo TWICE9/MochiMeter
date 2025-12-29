@@ -90,16 +90,15 @@ class HealthKitManager: ObservableObject {
     }
 
     // MARK: - Fetch Weekly Burnt Calories
-    func fetchWeeklyBurntCalories() async {
+    func fetchWeeklyBurntCalories(endDate: Date = Date()) async {
         guard let energyType = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) else { return }
 
         let calendar = Calendar.current
-        let now = Date()
-        guard let startDate = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: now)) else { return }
+        guard let startDate = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: endDate)) else { return }
 
-        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: now, options: .strictStartDate)
+        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
         let interval = DateComponents(day: 1)
-        let anchorDate = calendar.startOfDay(for: now)
+        let anchorDate = calendar.startOfDay(for: endDate)
 
         let data = await fetchStatisticsCollection(
             for: energyType,
@@ -107,7 +106,7 @@ class HealthKitManager: ObservableObject {
             interval: interval,
             anchorDate: anchorDate,
             startDate: startDate,
-            endDate: now,
+            endDate: endDate,
             unit: .kilocalorie()
         )
 

@@ -4,6 +4,8 @@ import SwiftUI
 import SwiftData
 import WidgetKit
 import UIKit
+import Auth
+@preconcurrency import Supabase
 
 struct FoodLogDetailView: View {
 
@@ -58,6 +60,10 @@ struct FoodLogDetailView: View {
     @State private var fixError: String?
     @State private var isNameExpanded = false
     @ObservedObject private var superwallManager = SuperwallManager.shared
+    @EnvironmentObject var themeManager: ThemeManager
+    @EnvironmentObject var authManager: AuthManager
+    
+    @State private var showSavedFeedback = false
 
     var body: some View {
         ZStack {
@@ -98,12 +104,43 @@ struct FoodLogDetailView: View {
                         .padding(.horizontal, 24)
                     }
 
-                    _buildContributionSection()
+                    // Show recipe ingredients if this is from a recipe
+                    if let recipe = log.recipe, let ingredients = recipe.ingredients, !ingredients.isEmpty {
+                        FrostedGlassContainer {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Ingredients")
+                                    .font(.headline)
+                                    .foregroundStyle(adaptiveTextColor)
+                                
+                                ForEach(ingredients) { ingredient in
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(ingredient.name)
+                                                .font(.subheadline)
+                                                .foregroundStyle(adaptiveTextColor)
+                                            Text("\(ingredient.servingAmount, specifier: "%.1f") × \(ingredient.servingSizeDescription)")
+                                                .font(.caption)
+                                                .foregroundStyle(adaptiveSecondaryTextColor)
+                                        }
+                                        Spacer()
+                                        Text("\(Int(convertEnergy(ingredient.totalCalories))) \(goals.energyUnit.unitLabel)")
+                                            .font(.caption)
+                                            .foregroundStyle(adaptiveSecondaryTextColor)
+                                    }
+                                    
+                                    if ingredient.id != ingredients.last?.id {
+                                        Divider()
+                                            .background(adaptiveSecondaryTextColor.opacity(0.3))
+                                    }
+                                }
+                            }
+                        }
                         .padding(.horizontal, 24)
+                    }
 
                     FrostedGlassContainer {
                         VStack(alignment: .leading, spacing: 16) {
-                            Text("Additional Nutrients (Total)")
+                            Text("Micronutrients")
                                 .font(.headline).foregroundStyle(adaptiveTextColor)
                             _buildNutrientRow(title: "Fiber", value: log.totalFiber, unit: "g")
                             Divider().background(adaptiveSecondaryTextColor.opacity(0.3))
@@ -115,6 +152,9 @@ struct FoodLogDetailView: View {
                         }
                     }
                     .padding(.horizontal, 24)
+
+                    _buildContributionSection()
+                        .padding(.horizontal, 24)
 
                     Spacer(minLength: 60)
                 }
@@ -163,6 +203,26 @@ struct FoodLogDetailView: View {
         } message: {
             Text("This action cannot be undone.")
         }
+        .overlay(alignment: .top) {
+            if showSavedFeedback {
+                HStack(spacing: 12) {
+                    Image(systemName: "star.fill")
+                        .foregroundStyle(.yellow)
+                        .font(.title3)
+                    Text("Food Saved!")
+                        .font(.headline)
+                        .foregroundStyle(adaptiveTextColor)
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
+                .background(.ultraThinMaterial)
+                .clipShape(Capsule())
+                .shadow(radius: 10)
+                .padding(.top, 10) // Safe area padding
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .zIndex(100)
+            }
+        }
     }
 
     private func deleteLog() {
@@ -180,6 +240,50 @@ struct FoodLogDetailView: View {
         }
 
         dismiss()
+    }
+    
+    private func saveFood() {
+        let savedFood = SavedFood(
+            userId: authManager.currentUser?.id.uuidString.lowercased() ?? "anonymous",
+            foodName: log.name,
+            brand: log.brand,
+            barcode: log.barcode,
+            caloriesPerServing: log.caloriesPerServing,
+            proteinPerServing: log.proteinPerServing,
+            carbsPerServing: log.carbsPerServing,
+            fatPerServing: log.fatPerServing,
+            fiberPerServing: log.fiberPerServing,
+            sugarPerServing: log.sugarPerServing,
+            servingSizeDescription: log.servingSizeDescription,
+            saltPerServing: log.saltPerServing,
+            potassiumPerServing: log.potassiumPerServing,
+            savedAt: Date(),
+            isSynced: false
+        )
+        
+        // Save locally
+        modelContext.insert(savedFood)
+        try? modelContext.save()
+        
+        // Sync to cloud
+        if let userId = authManager.currentUser?.id {
+             Task {
+                 await SavedFoodsSync.uploadSavedFood(savedFood, userId: userId.uuidString.lowercased())
+             }
+        }
+        
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+            showSavedFeedback = true
+        }
+        
+        // Hide after delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            withAnimation {
+                showSavedFeedback = false
+            }
+        }
     }
 
     // MARK: - AI Fix Helpers
@@ -341,6 +445,17 @@ struct FoodLogDetailView: View {
                                 .background(.ultraThinMaterial)
                                 .clipShape(Circle())
                         }
+                        
+                        Button {
+                            saveFood()
+                        } label: {
+                            Image(systemName: "star")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(Color("AppTextPrimary")) // Could change to yellow if checked
+                                .frame(width: 40, height: 40)
+                                .background(.ultraThinMaterial)
+                                .clipShape(Circle())
+                        }
 
                         Button {
                             showingDeleteConfirmation = true
@@ -390,8 +505,8 @@ struct FoodLogDetailView: View {
                 MacroStatCard(
                     icon: "flame.fill",
                     label: "Calories",
-                    value: Int(log.totalCalories),
-                    unit: "",
+                    value: Int(convertEnergy(log.totalCalories)),
+                    unit: " \(goals.energyUnit.unitLabel)",
                     iconColor: colorScheme == .light ? Color(red: 0.95, green: 0.6, blue: 0.4) : .orange,
                     isPrimary: true
                 )
@@ -405,7 +520,7 @@ struct FoodLogDetailView: View {
                     label: "Carbs",
                     value: Int(log.totalCarbs),
                     unit: "g",
-                    iconColor: Color("AppSecondaryAccent")
+                    iconColor: colorScheme == .dark ? themeManager.currentTheme.darkSecondaryColor : themeManager.currentTheme.secondaryColor
                 )
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -478,6 +593,10 @@ struct FoodLogDetailView: View {
         }
         .blur(radius: 60)
         .onAppear { animateOrbs() }
+    }
+
+    private func convertEnergy(_ kcal: Double) -> Double {
+        goals.energyUnit == .kilojoules ? kcal * 4.184 : kcal
     }
 
     private func downsampledImage(from data: Data, maxDimension: CGFloat) -> UIImage? {
@@ -645,6 +764,8 @@ struct MacroStatCard: View {
                 Text("\(value)\(unit)")
                     .font(.title3).bold()
                     .foregroundColor(adaptiveTextColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
             }
 
             Spacer()

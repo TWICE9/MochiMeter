@@ -40,7 +40,7 @@ struct GoogleSignInButtonView: View {
             .frame(maxWidth: .infinity)
             .frame(height: 50)
             .background(Color.white)
-            .foregroundColor(.black.opacity(0.7))
+            .foregroundColor(.black)
             .cornerRadius(12)
             .overlay(
                 RoundedRectangle(cornerRadius: 12)

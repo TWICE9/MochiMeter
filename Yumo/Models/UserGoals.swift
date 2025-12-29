@@ -63,12 +63,48 @@ enum GoalToAccomplish: String, Codable, CaseIterable {
     case feelBetter = "Feel better about myself"
 }
 
+enum UnitSystem: String, Codable, CaseIterable {
+    case metric = "Metric"
+    case imperial = "Imperial"
+    var displayName: String {
+        return self.rawValue
+    }
+    
+    // Weight units
+    var weightUnit: String {
+        switch self {
+        case .metric: return "kg"
+        case .imperial: return "lbs"
+        }
+    }
+    
+    // Height units
+    var heightUnit: String {
+        switch self {
+        case .metric: return "cm"
+        case .imperial: return "ft/in"
+        }
+    }
+}
+
 enum AppearanceMode: String, Codable, CaseIterable {
     case system = "System"
     case light = "Light"
     case dark = "Dark"
 }
 
+
+enum EnergyUnit: String, Codable, CaseIterable {
+    case calories = "Calories (kcal)"
+    case kilojoules = "Kilojoules (kJ)"
+    
+    var unitLabel: String {
+        switch self {
+        case .calories: return "kcal"
+        case .kilojoules: return "kJ"
+        }
+    }
+}
 
 // MARK: - UserGoals Model
 
@@ -88,6 +124,8 @@ final class UserGoals {
     var activityLevelRaw: String
     var weightGoalRaw: String
     var appearanceModeRaw: String = "System"
+    var unitSystemRaw: String = "Metric"  // "Metric" or "Imperial"
+    var energyUnitRaw: String = EnergyUnit.calories.rawValue // Default to Calories
 
     var targetWeight: Double  // Stored in kg
     var weeklyWeightChangeKg: Double = 0.5  // kg per week (0.25 to 1.0 typical for weight loss)
@@ -112,6 +150,16 @@ final class UserGoals {
     var appearanceMode: AppearanceMode {
         get { AppearanceMode(rawValue: appearanceModeRaw) ?? .system }
         set { appearanceModeRaw = newValue.rawValue }
+    }
+
+    var unitSystem: UnitSystem {
+        get { UnitSystem(rawValue: unitSystemRaw) ?? .metric }
+        set { unitSystemRaw = newValue.rawValue }
+    }
+    
+    var energyUnit: EnergyUnit {
+        get { EnergyUnit(rawValue: energyUnitRaw) ?? .calories }
+        set { energyUnitRaw = newValue.rawValue }
     }
 
     // --- Computed properties for new fields ---
@@ -198,7 +246,8 @@ final class UserGoals {
         dietTypeRaw: String? = nil,
         goalsToAccomplishRaw: [String]? = nil,
         referralCode: String? = nil,
-        healthKitEnabled: Bool = false
+        healthKitEnabled: Bool = false,
+        energyUnit: EnergyUnit = .calories
     ) {
         self.id = id
         self.name = name
@@ -212,6 +261,7 @@ final class UserGoals {
         self.targetWeight = targetWeight
         self.weightGoalRaw = weightGoal.rawValue
         self.appearanceModeRaw = appearanceMode.rawValue
+        self.energyUnitRaw = energyUnit.rawValue
 
         self.dailyCalories = InputValidation.capDailyCalories(dailyCalories)
         self.dailyProtein = InputValidation.capDailyMacro(dailyProtein)

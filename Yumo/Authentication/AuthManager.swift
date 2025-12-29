@@ -73,6 +73,16 @@ final class AuthManager: ObservableObject {
         do {
             if let session = try await authService.currentSession() {
                 self.currentUser = session.user
+                
+                // Identify user for analytics restoration
+                let userId = session.user.id.uuidString.lowercased()
+                AnalyticsManager.shared.identify(userId: userId, properties: [
+                    "email": session.user.email ?? ""
+                ])
+                
+                // Ensure OneSignal/Widgets have the ID too
+                await UserSession.shared.setUserId(userId)
+                
             } else {
                 self.currentUser = nil
             }
@@ -93,9 +103,22 @@ final class AuthManager: ObservableObject {
             // Track sign-out and reset analytics identity
             AnalyticsManager.shared.trackSignOut()
             AnalyticsManager.shared.reset()
+            
+            // Reset Premium Status
+            SuperwallManager.shared.reset()
         } catch {
             print("⚠️ Error signing out:", error)
         }
+    }
+    
+    // MARK: - Delete Account
+    func deleteAccount() async throws {
+        try await userService.deleteAccount()
+        // Clear current user after successful deletion
+        self.currentUser = nil
+        await UserSession.shared.clearUserId()
+        AnalyticsManager.shared.reset()
+        SuperwallManager.shared.reset()
     }
 
     // MARK: - Complete Sign In (with data migration)
@@ -125,6 +148,9 @@ final class AuthManager: ObservableObject {
         AnalyticsManager.shared.identify(userId: userId, properties: [
             "email": user.email ?? ""
         ])
+        
+        // 5. Check premium status for newly signed-in user
+        await SuperwallManager.shared.checkPremiumStatus()
     }
     
     /// Migrates local data from uppercase userId to lowercase userId

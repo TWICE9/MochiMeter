@@ -20,6 +20,7 @@
 		18AC183F2EF008EE00EBCEBA /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 18AC183E2EF008EE00EBCEBA /* GoogleSignInSwift */; };
 		18AC18432EF03DCD00EBCEBA /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 18AC18422EF03DCD00EBCEBA /* StoreKit.framework */; };
 		18B694312EFF62F70035E36B /* PostHog in Frameworks */ = {isa = PBXBuildFile; productRef = 18B694302EFF62F70035E36B /* PostHog */; };
+		18B695712F0149560035E36B /* GoogleMobileAds in Frameworks */ = {isa = PBXBuildFile; productRef = 18B695702F0149560035E36B /* GoogleMobileAds */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -120,6 +121,8 @@
 				Models/OpenFoodFactsModels.swift,
 				Models/Recipe.swift,
 				Models/Reminder.swift,
+				Models/SavedFood.swift,
+				Models/ShoppingItem.swift,
 				Models/UserGoals.swift,
 			);
 			target = 188637B82EC5FF8A00521F01 /* YumoWidgetsExtension */;
@@ -181,6 +184,7 @@
 				18AA35F12ECC8304002AFB3A /* Storage in Frameworks */,
 				18AA35ED2ECC8304002AFB3A /* PostgREST in Frameworks */,
 				18AC183F2EF008EE00EBCEBA /* GoogleSignInSwift in Frameworks */,
+				18B695712F0149560035E36B /* GoogleMobileAds in Frameworks */,
 				187AA88F2ECD916F000ACC62 /* Auth in Frameworks */,
 				18AA35EF2ECC8304002AFB3A /* Realtime in Frameworks */,
 				18B694312EFF62F70035E36B /* PostHog in Frameworks */,
@@ -282,6 +286,7 @@
 				18AC183C2EF008EE00EBCEBA /* GoogleSignIn */,
 				18AC183E2EF008EE00EBCEBA /* GoogleSignInSwift */,
 				18B694302EFF62F70035E36B /* PostHog */,
+				18B695702F0149560035E36B /* GoogleMobileAds */,
 			);
 			productName = Yumo;
 			productReference = 187B323C2EBEE1B200389DAC /* Yumo.app */;
@@ -392,6 +397,7 @@
 				182551082EE05A5000BFD72A /* XCRemoteSwiftPackageReference "Superwall-iOS" */,
 				18AC183B2EF008EE00EBCEBA /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 				18B6942F2EFF614A0035E36B /* XCRemoteSwiftPackageReference "posthog-ios" */,
+				18B6956F2F0149560035E36B /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 187B323D2EBEE1B200389DAC /* Products */;
@@ -620,7 +626,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Yumo/Yumo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1.01;
+				CURRENT_PROJECT_VERSION = 1.2;
 				DEVELOPMENT_TEAM = AKGUAYDPCS;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -666,7 +672,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Yumo/Yumo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1.01;
+				CURRENT_PROJECT_VERSION = 1.2;
 				DEVELOPMENT_TEAM = AKGUAYDPCS;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -812,7 +818,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = YumoWidgetsExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1.01;
+				CURRENT_PROJECT_VERSION = 1.2;
 				DEVELOPMENT_TEAM = AKGUAYDPCS;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = YumoWidgets/Info.plist;
@@ -848,7 +854,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = YumoWidgetsExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1.01;
+				CURRENT_PROJECT_VERSION = 1.2;
 				DEVELOPMENT_TEAM = AKGUAYDPCS;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = YumoWidgets/Info.plist;
@@ -959,6 +965,14 @@
 				minimumVersion = 3.36.2;
 			};
 		};
+		18B6956F2F0149560035E36B /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/googleads/swift-package-manager-google-mobile-ads.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.14.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1006,6 +1020,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 18B6942F2EFF614A0035E36B /* XCRemoteSwiftPackageReference "posthog-ios" */;
 			productName = PostHog;
+		};
+		18B695702F0149560035E36B /* GoogleMobileAds */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 18B6956F2F0149560035E36B /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */;
+			productName = GoogleMobileAds;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

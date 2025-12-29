@@ -182,7 +182,7 @@ Return ONLY valid JSON, no markdown or explanation.`,
 Find the real nutritional values from official sources or nutrition databases.
 
 Return JSON format:
-{"name":"<full item name>","servingSize":"<1 item or portion>","calories":<exact num>,"protein":<g>,"carbs":<g>,"fat":<g>,"fiber":<g>,"sugar":<g>,"confidence":"high/medium/low","ingredients":["<i1>","<i2>"]}`,
+{"name":"<full item name>","servingSize":"<1 item or portion>","calories":<exact num>,"protein":<g>,"carbs":<g>,"fat":<g>,"fiber":<g>,"sugar":<g>,"salt":<g>,"potassium":<mg>,"confidence":"high/medium/low","ingredients":["<i1>","<i2>"]}`,
           },
         ],
         max_tokens: 300,

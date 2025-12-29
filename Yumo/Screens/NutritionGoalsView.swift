@@ -25,7 +25,8 @@ struct NutritionGoalsView: View {
 
     init(goals: UserGoals) {
         self.goals = goals
-        _dailyCalories = State(initialValue: goals.dailyCalories)
+        let isKJ = goals.energyUnit == .kilojoules
+        _dailyCalories = State(initialValue: goals.dailyCalories * (isKJ ? 4.184 : 1.0))
         _dailyProtein = State(initialValue: goals.dailyProtein)
         _dailyCarbs = State(initialValue: goals.dailyCarbs)
         _dailyFat = State(initialValue: goals.dailyFat)
@@ -97,7 +98,7 @@ struct NutritionGoalsView: View {
                             _buildGoalTextField(
                                 title: "Calories",
                                 binding: $dailyCalories,
-                                unit: "kcal"
+                                unit: goals.energyUnit.unitLabel
                             )
 
                             Divider().background(cardBorderColor)
@@ -193,12 +194,15 @@ struct NutritionGoalsView: View {
 
     private func saveGoals() {
         // Validate all fields
-        if dailyCalories < 100 {
+        let isKJ = goals.energyUnit == .kilojoules
+        let caloriesInKcal = isKJ ? dailyCalories / 4.184 : dailyCalories
+
+        if caloriesInKcal < 100 {
             validationMessage = "Calories must be at least 100 kcal"
             showValidationAlert = true
             return
         }
-        if dailyCalories > 10000 {
+        if caloriesInKcal > 10000 {
             validationMessage = "Calories must be no more than 10,000 kcal"
             showValidationAlert = true
             return
@@ -260,7 +264,7 @@ struct NutritionGoalsView: View {
         }
 
         // All validation passed - save to goals model
-        goals.dailyCalories = dailyCalories
+        goals.dailyCalories = caloriesInKcal
         goals.dailyProtein = dailyProtein
         goals.dailyCarbs = dailyCarbs
         goals.dailyFat = dailyFat

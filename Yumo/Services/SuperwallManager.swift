@@ -123,19 +123,34 @@ class SuperwallManager: ObservableObject {
         _ = await Superwall.shared.restorePurchases()
         await checkPremiumStatus()
     }
+    
+    /// Reset state on sign out
+    func reset() {
+        self.isPremium = false
+        self.supabasePremium = false
+        print("Superwall state reset")
+    }
 }
 
 // MARK: - SuperwallDelegate
 extension SuperwallManager: SuperwallDelegate {
     func handleSuperwallEvent(withInfo eventInfo: SuperwallEventInfo) {
         switch eventInfo.event {
-        case .paywallOpen:
+        case .paywallOpen(let paywallInfo):
+            // Track analytics
+            let name = paywallInfo.name
+            AnalyticsManager.shared.trackPaywallViewed(trigger: name)
+            
             // Ensure paywall window respects the app's appearance
             Task { @MainActor in
                 self.applyAppearanceToAllWindows()
             }
 
-        case .transactionComplete:
+        case .transactionComplete(_, let product, _, _):
+            // Track subscription purchase
+            let productName = product.productIdentifier
+            AnalyticsManager.shared.trackSubscriptionPurchased(plan: productName)
+            
             Task { await checkPremiumStatus() }
 
         case .subscriptionStatusDidChange:

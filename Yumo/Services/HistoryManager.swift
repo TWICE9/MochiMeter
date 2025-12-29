@@ -51,8 +51,8 @@ struct HistoryManager {
         )
     }
     
-    /// Generates 7 daily summaries for charting (for the last week).
-    static func generateLastWeekSummaries(from allLogs: [LoggedFood], goals: UserGoals) -> [DaySummary] {
+    /// Generates 7 daily summaries for charting (for the last week relative to endDate).
+    static func generateLastWeekSummaries(from allLogs: [LoggedFood], goals: UserGoals, endDate: Date = Date()) -> [DaySummary] {
         var summaries: [DaySummary] = []
         let calendar = Calendar.current
         
@@ -61,9 +61,9 @@ struct HistoryManager {
             calendar.startOfDay(for: log.timestamp)
         }
         
-        // 2. Iterate through the last 7 days (including today)
+        // 2. Iterate through the last 7 days (including endDate)
         for i in 0..<7 {
-            guard let date = calendar.date(byAdding: .day, value: -i, to: Date()) else { continue }
+            guard let date = calendar.date(byAdding: .day, value: -i, to: endDate) else { continue }
             let startOfDate = calendar.startOfDay(for: date)
             
             // 3. Get logs for that day, or an empty array if none exist

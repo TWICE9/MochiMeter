@@ -16,7 +16,9 @@ enum SharedModelContainer {
             FastingLog.self,
             Recipe.self,
             Reminder.self,
-            CloudFood.self
+            CloudFood.self,
+            SavedFood.self,
+            ShoppingItem.self
         ])
 
         // Attempt to load App Group directory

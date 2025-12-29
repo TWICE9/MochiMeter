@@ -49,7 +49,8 @@ struct NewOnboardingScreen: View {
                         flowManager.goNext()
                     }
                 case 17: GoalsSummaryPage(flowManager: flowManager)
-                case 18: SignInPage(flowManager: flowManager, authManager: authManager, modelContext: modelContext, onFinish: onFinish)
+                case 18: ThemeSelectionPage(flowManager: flowManager)
+                case 19: SignInPage(flowManager: flowManager, authManager: authManager, modelContext: modelContext, onFinish: onFinish)
                 default: EmptyView()
                 }
             }

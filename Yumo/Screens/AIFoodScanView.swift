@@ -238,6 +238,9 @@ struct AIFoodScanView: View {
         let food = result.toLoggedFood()
         modelContext.insert(food)
         try? modelContext.save()
+        
+        // Request review after first food log
+        ReviewRequestManager.shared.checkAndRequestReview()
 
         dismiss()
     }

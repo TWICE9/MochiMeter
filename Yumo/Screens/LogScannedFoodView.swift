@@ -370,6 +370,9 @@ struct LogScannedFoodView: View {
         
         // Track analytics
         AnalyticsManager.shared.trackFoodLogged(name: foodDisplayName, calories: totalCalories, source: .barcode)
+        
+        // Request review after first food log
+        ReviewRequestManager.shared.checkAndRequestReview()
 
         // Dismiss immediately
         if let onLogComplete {

@@ -146,6 +146,7 @@ protocol UserService: Sendable {
     @MainActor func uploadOnboardingData(for user: User, goals: UserGoals) async throws
     func downloadUserProfile(for user: User) async throws -> ProfileResponse?
     @MainActor func updateUserGoals(for user: User, goals: UserGoals) async throws
+    func deleteAccount() async throws
 }
 
 
@@ -282,6 +283,18 @@ actor SupabaseUserService: UserService {
 
         #if DEBUG
         print("User goals updated in Supabase")
+        #endif
+    }
+
+    // ---------------------------------------------------------
+    // 5️⃣ Delete User Account
+    // ---------------------------------------------------------
+    func deleteAccount() async throws {
+        _ = try await client.functions
+            .invoke("delete-account")
+            
+        #if DEBUG
+        print("Account deletion requested")
         #endif
     }
 }

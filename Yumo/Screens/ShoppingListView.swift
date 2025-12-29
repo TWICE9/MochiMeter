@@ -1,12 +1,26 @@
 import SwiftUI
+import SwiftData
 
 struct ShoppingListView: View {
-    @EnvironmentObject var viewModel: ShoppingListViewModel
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    @Query private var items: [ShoppingItem]
+    
+    @State private var newItemName: String = ""
+    private var userId: String
+
+    init(userId: String) {
+        self.userId = userId
+        let predicate = #Predicate<ShoppingItem> { $0.userId == userId }
+        _items = Query(filter: predicate, sort: [SortDescriptor(\ShoppingItem.createdAt, order: .forward)]) 
+    }
 
     // For animated background
     @State private var offset1: CGSize = .zero
     @State private var offset2: CGSize = .zero
+    @FocusState private var isInputFocused: Bool
 
     // MARK: - Adaptive Colors
     private var primaryTextColor: Color {
@@ -54,7 +68,7 @@ struct ShoppingListView: View {
                 // List + Empty State
                 ZStack {
                     // 📌 Placeholder when list is empty
-                    if viewModel.items.isEmpty {
+                    if items.isEmpty {
                         VStack(spacing: 16) {
                             Image(systemName: "cart.badge.plus")
                                 .font(.system(size: 48))
@@ -75,17 +89,32 @@ struct ShoppingListView: View {
                     }
                     
                     // Actual list
-                    List {
-                        ForEach($viewModel.items) { $item in
-                            _buildListRow(item: $item)
-                                .listRowSeparator(.hidden)
-                                .listRowBackground(Color.clear)
-                                .padding(.vertical, 6)
+                    ScrollViewReader { proxy in
+                        List {
+                            ForEach(items) { item in
+                                _buildListRow(item: item)
+                                    .id(item.id)
+                                    .listRowSeparator(.hidden)
+                                    .listRowBackground(Color.clear)
+                                    .padding(.vertical, 0.5)
+                            }
+                            .onDelete(perform: deleteItems)
                         }
-                        .onDelete(perform: viewModel.deleteItems)
+                        .listStyle(.plain)
+                        .scrollContentBackground(.hidden)
+                        .safeAreaInset(edge: .bottom) {
+                            Spacer()
+                                .frame(height: 80)
+                        }
+                        .onChange(of: items.count) { _, _ in
+                            if let lastItem = items.last {
+                                withAnimation {
+                                    proxy.scrollTo(lastItem.id, anchor: .bottom)
+                                }
+                            }
+                        }
                     }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
+
                 }
                 .padding(.top, 10)
                 .onTapGesture { dismissKeyboard() }
@@ -93,16 +122,126 @@ struct ShoppingListView: View {
             .navigationTitle("Shopping List")
             .navigationBarTitleDisplayMode(.inline)
         }
-        .onAppear { animateOrbs() }
+        .onAppear {
+            animateOrbs()
+            syncWithCloud()
+        }
+    }
+
+    // MARK: - Actions
+    
+    private func syncWithCloud() {
+        guard !userId.isEmpty else { return }
+        
+        Task { @MainActor in
+            do {
+                let dtos = try await CloudShoppingManager.shared.fetchShoppingItems(userId: userId)
+                
+                for dto in dtos {
+                    let id = dto.id
+                    let date = CloudShoppingManager.shared.parseDate(dto.created_at)
+                    
+                    let descriptor = FetchDescriptor<ShoppingItem>(
+                        predicate: #Predicate { $0.id == id }
+                    )
+                    
+                    if let existing = try? modelContext.fetch(descriptor).first {
+                        // Update existing if different (Cloud Wins)
+                        if existing.isCompleted != dto.is_completed || existing.name != dto.name {
+                            existing.isCompleted = dto.is_completed
+                            existing.name = dto.name
+                            existing.createdAt = date
+                        }
+                    } else {
+                        // Insert new from Cloud
+                        let newItem = ShoppingItem(
+                            id: dto.id,
+                            userId: userId,
+                            name: dto.name,
+                            isCompleted: dto.is_completed,
+                            createdAt: date
+                        )
+                        modelContext.insert(newItem)
+                    }
+                }
+                try? modelContext.save()
+                print("🛒 Synced \(dtos.count) items from cloud")
+            } catch {
+                print("❌ Cloud Sync Failed: \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    private func addItem() {
+        guard !newItemName.isEmpty else { return }
+        
+        let uid: String? = userId.isEmpty ? nil : userId
+        let newItem = ShoppingItem(userId: uid, name: newItemName)
+        modelContext.insert(newItem)
+        
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.impactOccurred()
+        
+        // Cloud Sync
+        if let uId = uid {
+            let nId = newItem.id
+            let nName = newItem.name
+            let nComp = newItem.isCompleted
+            let nDate = newItem.createdAt
+            
+            Task {
+                await CloudShoppingManager.shared.upsert(id: nId, userId: uId, name: nName, isCompleted: nComp, createdAt: nDate)
+            }
+        }
+        
+        newItemName = ""
+    }
+    
+    private func toggleCompletion(item: ShoppingItem) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            item.isCompleted.toggle()
+        }
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Cloud Sync
+        if !userId.isEmpty {
+            let id = item.id
+            let name = item.name
+            let comp = item.isCompleted
+            let date = item.createdAt
+            let uId = userId
+            
+            Task {
+                await CloudShoppingManager.shared.upsert(id: id, userId: uId, name: name, isCompleted: comp, createdAt: date)
+            }
+        }
+    }
+    
+    private func deleteItems(at offsets: IndexSet) {
+        withAnimation {
+            for index in offsets {
+                let item = items[index]
+                let id = item.id
+                
+                // Cloud Sync
+                Task {
+                    await CloudShoppingManager.shared.delete(id: id)
+                }
+                modelContext.delete(item)
+            }
+        }
     }
 
     // MARK: - Add Item Bar
     @ViewBuilder
     private func _buildAddItemBar() -> some View {
         HStack(spacing: 16) {
-            TextField("", text: $viewModel.newItemName, prompt:
-                Text("Add new item...").foregroundColor(placeholderColor)
+            TextField("", text: $newItemName, prompt:
+                Text("Add new item...").foregroundColor(placeholderColor),
+                axis: .vertical
             )
+            .focused($isInputFocused)
             .padding()
             .background(
                 RoundedRectangle(cornerRadius: 16)
@@ -110,32 +249,37 @@ struct ShoppingListView: View {
                     .stroke(cardBorderColor, lineWidth: 1)
             )
             .foregroundStyle(primaryTextColor)
-            .submitLabel(.done)
-            .onSubmit(viewModel.addItem)
+            .lineLimit(1...5)
+            .onChange(of: newItemName) { _, newValue in
+                if newValue.contains("\n") {
+                    newItemName = newValue.replacingOccurrences(of: "\n", with: "")
+                    addItem()
+                }
+            }
 
-            Button(action: viewModel.addItem) {
+            Button(action: addItem) {
                 Image(systemName: "plus.circle.fill")
                     .font(.title)
                     .foregroundStyle(Color("AppSecondaryAccent"))
             }
-            .disabled(viewModel.newItemName.isEmpty)
+            .disabled(newItemName.isEmpty)
         }
     }
     
     // MARK: - List Row
     @ViewBuilder
-    private func _buildListRow(item: Binding<ShoppingItem>) -> some View {
+    private func _buildListRow(item: ShoppingItem) -> some View {
         HStack(spacing: 16) {
-            Image(systemName: item.wrappedValue.isCompleted ? "checkmark.square.fill" : "square")
+            Image(systemName: item.isCompleted ? "checkmark.square.fill" : "square")
                 .font(.title3)
-                .foregroundStyle(item.wrappedValue.isCompleted ? Color("AppSecondaryAccent") : secondaryTextColor)
+                .foregroundStyle(item.isCompleted ? Color("AppSecondaryAccent") : secondaryTextColor)
                 .onTapGesture {
-                    viewModel.toggleCompletion(for: item.wrappedValue)
+                    toggleCompletion(item: item)
                 }
 
-            Text(item.wrappedValue.name)
-                .foregroundStyle(item.wrappedValue.isCompleted ? tertiaryTextColor : primaryTextColor)
-                .strikethrough(item.wrappedValue.isCompleted, color: secondaryTextColor)
+            Text(item.name)
+                .foregroundStyle(item.isCompleted ? tertiaryTextColor : primaryTextColor)
+                .strikethrough(item.isCompleted, color: secondaryTextColor)
 
             Spacer()
         }
@@ -186,9 +330,4 @@ struct ShoppingListView: View {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
                                         to: nil, from: nil, for: nil)
     }
-}
-
-#Preview {
-    ShoppingListView()
-        .environmentObject(ShoppingListViewModel())
 }

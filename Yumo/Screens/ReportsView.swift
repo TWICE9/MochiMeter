@@ -4,15 +4,23 @@ import SwiftUI
 import SwiftData
 import Charts
 import HealthKit
+import Auth
 
 struct ReportsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject var themeManager: ThemeManager
+    @EnvironmentObject var authManager: AuthManager
     @StateObject private var healthManager = HealthKitManager.shared
 
     @State private var allFoodLogs: [LoggedFood] = []
     @State private var allWaterLogs: [LoggedWater] = []
-    @State private var allWeightLogs: [LoggedWeight] = []
+    @Query private var allWeightLogs: [LoggedWeight]
+    
+    init(userId: String = "") {
+        let predicate = #Predicate<LoggedWeight> { $0.userId == userId }
+        _allWeightLogs = Query(filter: predicate, sort: \.timestamp, order: .reverse)
+    }
     @State private var goals: UserGoals = UserGoals()
     @State private var selectedDate: Date = Date().startOfDay
     @State private var currentMonth: Date = Date()
@@ -20,10 +28,17 @@ struct ReportsView: View {
     @State private var weeklyWater: [(date: Date, amountML: Double)] = []
     @State private var selectedDateCaloriesEaten: Double = 0
     @State private var showLogWeightSheet: Bool = false
+    @State private var showWeightHistory: Bool = false
     @State private var isCalendarExpanded: Bool = false
 
     @State private var offset1: CGSize = .zero
     @State private var offset2: CGSize = .zero
+    
+    // Feedback States
+    @State private var showConfetti: Bool = false
+    @State private var showToast: Bool = false
+    @State private var toastMessage: String = ""
+    @State private var toastIcon: String = ""
 
     private let healthStore = HKHealthStore()
     private let calendar = Calendar.current
@@ -56,9 +71,32 @@ struct ReportsView: View {
     private var cardBackground: Color {
         colorScheme == .dark ? Color.white.opacity(0.08) : Color.white
     }
+    
+    // Theme-aware accent colors
+    private var primaryAccent: Color {
+        colorScheme == .dark ? themeManager.currentTheme.darkPrimaryColor : themeManager.currentTheme.primaryColor
+    }
+    
+    private var secondaryAccent: Color {
+        colorScheme == .dark ? themeManager.currentTheme.darkSecondaryColor : themeManager.currentTheme.secondaryColor
+    }
+    
+    // Unit system helpers
+    private var unitSystem: UnitSystem {
+        goals.unitSystem
+    }
+    
+    private var weightUnit: String {
+        unitSystem.weightUnit
+    }
+    
+    private func formatWeight(_ weightInKg: Double) -> String {
+        let converted = unitSystem.formatWeight(weightInKg)
+        return String(format: "%.1f", converted)
+    }
 
     private var lastWeekSummaries: [DaySummary] {
-        HistoryManager.generateLastWeekSummaries(from: allFoodLogs, goals: goals)
+        HistoryManager.generateLastWeekSummaries(from: allFoodLogs, goals: goals, endDate: selectedDate)
     }
 
     private var netCalories: Double {
@@ -100,8 +138,16 @@ struct ReportsView: View {
                     _buildDateSelector()
                         .padding(.horizontal, 24)
 
+                    // Ad Banner
+                    ConditionalAdBanner(adUnitID: AdManager.reportsBannerAdUnitID)
+                        .padding(.vertical, 8)
+
                     // Today's Activity Summary
                     _buildTodayActivitySummary()
+                        .padding(.horizontal, 24)
+
+                    // Micronutrient Tracker
+                    _buildMicronutrientCard()
                         .padding(.horizontal, 24)
 
                     // Net Calories Card
@@ -121,7 +167,7 @@ struct ReportsView: View {
                                         .font(.headline).foregroundStyle(primaryTextColor)
                                     Spacer()
                                     Image(systemName: "scalemass.fill")
-                                        .foregroundStyle(Color("AppPrimaryAccent"))
+                                        .foregroundStyle(primaryAccent)
                                 }
 
                                 _buildWeightChart()
@@ -168,7 +214,7 @@ struct ReportsView: View {
                                     .font(.headline).foregroundStyle(primaryTextColor)
                                 Spacer()
                                 Image(systemName: "figure.walk")
-                                    .foregroundStyle(Color("AppSecondaryAccent"))
+                                    .foregroundStyle(secondaryAccent)
                             }
 
                             _buildStepsChart()
@@ -201,6 +247,41 @@ struct ReportsView: View {
             .scrollIndicators(.hidden)
             .scrollClipDisabled()
             .ignoresSafeArea(edges: .top)
+            // Toast Overlay
+            if showToast {
+                VStack {
+                    HStack(spacing: 12) {
+                        Image(systemName: toastIcon)
+                            .font(.title3)
+                            .foregroundStyle(toastIcon.contains("heart") || toastIcon.contains("flame") ? .pink : .green)
+                        Text(toastMessage)
+                            .font(.headline)
+                            .foregroundStyle(primaryTextColor)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
+                    .shadow(radius: 10)
+                    .padding(.top, 50) 
+                    
+                    Spacer()
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .zIndex(100)
+                .onAppear {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        withAnimation { showToast = false }
+                    }
+                }
+            }
+            
+            // Confetti Overlay
+            if showConfetti {
+                ConfettiView()
+                    .zIndex(101)
+                    .transition(.opacity)
+            }
         }
         .onAppear {
             Task { await refreshData() }
@@ -209,18 +290,26 @@ struct ReportsView: View {
         .onChange(of: selectedDate) { _, newDate in
             Task {
                 await healthManager.fetchActivity(for: newDate)
+                await healthManager.fetchWeeklyBurntCalories(endDate: newDate)
                 updateCaloriesForSelectedDate()
+                fetchWeeklySteps(endDate: newDate)
+                weeklyWater = generateWeeklyWater(endDate: newDate)
             }
         }
         .sheet(isPresented: $showLogWeightSheet) {
             LogWeightSheet(
                 currentWeight: allWeightLogs.first?.weightKg ?? goals.weight,
+                unitSystem: unitSystem,
                 onSave: { weightKg in
                     Task { await saveWeightLog(weightKg: weightKg) }
                 }
             )
             .presentationDetents([.height(320)])
             .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showWeightHistory) {
+            WeightHistoryView(userId: authManager.currentUser?.id.uuidString.lowercased() ?? "")
+                .presentationDragIndicator(.visible)
         }
     }
 
@@ -233,13 +322,13 @@ struct ReportsView: View {
                 icon: "figure.walk",
                 value: formatNumber(healthManager.todaySteps),
                 label: "Steps",
-                color: Color("AppSecondaryAccent")
+                color: secondaryAccent
             )
 
             // Burnt Calories
             ActivityStatCard(
                 icon: "flame.fill",
-                value: formatNumber(healthManager.todayBurntCalories),
+                value: formatNumber(convertEnergy(healthManager.todayBurntCalories)),
                 label: "Burnt",
                 color: .orange
             )
@@ -251,6 +340,81 @@ struct ReportsView: View {
                 label: "Active min",
                 color: .green
             )
+        }
+    }
+
+    // MARK: - Micronutrient Tracker
+    @ViewBuilder
+    private func _buildMicronutrientCard() -> some View {
+        let todaysLogs = allFoodLogs.filter { calendar.isDate($0.timestamp, inSameDayAs: selectedDate) }
+        
+        // Calculate totals
+        let fiber = todaysLogs.reduce(0) { $0 + $1.fiberPerServing * $1.servingAmount }
+        let sugar = todaysLogs.reduce(0) { $0 + $1.sugarPerServing * $1.servingAmount }
+        let salt = todaysLogs.reduce(0) { $0 + $1.saltPerServing * $1.servingAmount }
+        let potassium = todaysLogs.reduce(0) { $0 + $1.potassiumPerServing * $1.servingAmount }
+        
+        FrostedGlassContainer {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Text("Micronutrients")
+                        .font(.headline)
+                        .foregroundStyle(primaryTextColor)
+                    
+                    Spacer()
+                    
+                    if !todaysLogs.isEmpty {
+                        Text("\(todaysLogs.count) items")
+                            .font(.caption)
+                            .foregroundStyle(secondaryTextColor)
+                    }
+                }
+                
+                VStack(spacing: 16) {
+                    _buildMicroRow(name: "Fiber", value: fiber, unit: "g", color: .green, icon: "leaf.fill")
+                    Divider().background(colorScheme == .dark ? Color.white.opacity(0.1) : Color.black.opacity(0.1))
+                    _buildMicroRow(name: "Sugar", value: sugar, unit: "g", color: .pink, icon: "cube.fill")
+                    Divider().background(colorScheme == .dark ? Color.white.opacity(0.1) : Color.black.opacity(0.1))
+                    _buildMicroRow(name: "Salt", value: salt, unit: "g", color: .gray, icon: "sparkles")
+                    Divider().background(colorScheme == .dark ? Color.white.opacity(0.1) : Color.black.opacity(0.1))
+                    _buildMicroRow(name: "Potassium", value: potassium, unit: "mg", color: .purple, icon: "bolt.fill")
+                }
+            }
+        }
+    }
+    
+
+    
+    private func _buildMicroRow(name: String, value: Double, unit: String, color: Color, icon: String) -> some View {
+        HStack {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(color.opacity(0.15))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: icon)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(color)
+                }
+                
+                Text(name)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundStyle(primaryTextColor)
+            }
+            
+            Spacer()
+            
+            HStack(spacing: 2) {
+                Text(formatNumber(value))
+                    .font(.headline)
+                    .foregroundStyle(primaryTextColor)
+                    .contentTransition(.numericText())
+                Text(unit)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(secondaryTextColor)
+            }
         }
     }
 
@@ -267,7 +431,7 @@ struct ReportsView: View {
                             .font(.subheadline)
                             .foregroundStyle(secondaryTextColor)
                         HStack(spacing: 4) {
-                            Text("\(Int(abs(netCalories)))")
+                            Text("\(Int(convertEnergy(abs(netCalories))))")
                                 .contentTransition(.numericText())
                             Text(isDeficit ? "deficit" : "surplus")
                         }
@@ -285,13 +449,13 @@ struct ReportsView: View {
 
                         Circle()
                             .trim(from: 0, to: min(selectedDateCaloriesEaten / max(goals.dailyCalories, 1), 1.0))
-                            .stroke(Color("AppPrimaryAccent"), style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                            .stroke(primaryAccent, style: StrokeStyle(lineWidth: 8, lineCap: .round))
                             .rotationEffect(.degrees(-90))
                             .frame(width: 70, height: 70)
                             .animation(.easeInOut(duration: 0.4), value: selectedDateCaloriesEaten)
 
                         VStack(spacing: 0) {
-                            Text("\(Int(selectedDateCaloriesEaten))")
+                            Text("\(Int(convertEnergy(selectedDateCaloriesEaten)))")
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundStyle(primaryTextColor)
                                 .contentTransition(.numericText())
@@ -309,7 +473,7 @@ struct ReportsView: View {
                 HStack {
                     HStack(spacing: 4) {
                         Image(systemName: "fork.knife")
-                        Text("\(Int(selectedDateCaloriesEaten))")
+                        Text("\(Int(convertEnergy(selectedDateCaloriesEaten)))")
                             .contentTransition(.numericText())
                         Text("eaten")
                     }
@@ -321,7 +485,7 @@ struct ReportsView: View {
 
                     HStack(spacing: 4) {
                         Image(systemName: "flame")
-                        Text("\(Int(healthManager.todayBurntCalories))")
+                        Text("\(Int(convertEnergy(healthManager.todayBurntCalories)))")
                             .contentTransition(.numericText())
                         Text("burnt")
                     }
@@ -337,29 +501,56 @@ struct ReportsView: View {
     private func refreshData() async {
         allFoodLogs = await UserScopedQuery.fetchFoodLogs(context: modelContext)
         allWaterLogs = await UserScopedQuery.fetchWaterLogs(context: modelContext)
-        allWeightLogs = await UserScopedQuery.fetchWeightLogs(context: modelContext)
         if let fetchedGoals = await UserScopedQuery.fetchUserGoals(context: modelContext) {
             goals = fetchedGoals
         }
-        weeklyWater = generateWeeklyWater()
-
-        // Calculate calories eaten for selected date
+        
+        // Update calories for initial load
         updateCaloriesForSelectedDate()
-
+        
         // Fetch HealthKit data for selected date
         await healthManager.fetchActivity(for: selectedDate)
-        await healthManager.fetchWeeklyBurntCalories()
+        await healthManager.fetchWeeklyBurntCalories(endDate: selectedDate)
         await healthManager.fetchLatestWeight()
+        
+        // Fetch Steps
+        fetchWeeklySteps(endDate: selectedDate)
+        
+        weeklyWater = generateWeeklyWater(endDate: selectedDate)
     }
 
     private func saveWeightLog(weightKg: Double) async {
+        // Capture old weight for feedback
+        let oldWeight = allWeightLogs.first?.weightKg ?? goals.weight
+        
         let userId = await UserSession.shared.getCurrentUserId()
         let newLog = LoggedWeight(weightKg: weightKg)
         newLog.userId = userId
         modelContext.insert(newLog)
+        try? modelContext.save()
 
-        // Update local state
-        allWeightLogs.insert(newLog, at: 0)
+        // Trigger Feedback
+        await MainActor.run {
+            if weightKg < oldWeight {
+                // Weight Loss / New Low
+                showConfetti = true
+                toastMessage = "New Low Recorded! 🎉"
+                toastIcon = "arrow.down.heart.fill"
+                
+                // Hide confetti after animation
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                    withAnimation { showConfetti = false }
+                }
+            } else {
+                // Weight gain or same (Neutral/Encouraging)
+                toastMessage = "Weight Updated"
+                toastIcon = "checkmark.circle.fill"
+            }
+            
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                showToast = true
+            }
+        }
 
         // Also save to HealthKit if authorized
         if healthManager.isAuthorized {
@@ -399,10 +590,10 @@ struct ReportsView: View {
 
         healthStore.requestAuthorization(toShare: typesToWrite, read: typesToRead) { success, error in
             if success {
-                fetchWeeklySteps()
-                Task {
+                Task { @MainActor in
+                    fetchWeeklySteps(endDate: selectedDate)
                     await healthManager.fetchActivity(for: selectedDate)
-                    await healthManager.fetchWeeklyBurntCalories()
+                    await healthManager.fetchWeeklyBurntCalories(endDate: selectedDate)
                     await healthManager.fetchLatestWeight()
                 }
             } else if let error = error {
@@ -412,8 +603,7 @@ struct ReportsView: View {
     }
 
     // MARK: - Water
-    private func generateWeeklyWater() -> [(Date, Double)] {
-        let endDate = Date()
+    private func generateWeeklyWater(endDate: Date) -> [(Date, Double)] {
         guard calendar.date(byAdding: .day, value: -6, to: endDate.startOfDay) != nil else { return [] }
 
         let grouped = Dictionary(grouping: allWaterLogs) { log in
@@ -430,10 +620,9 @@ struct ReportsView: View {
         return result.reversed()
     }
 
-    private func fetchWeeklySteps() {
+    private func fetchWeeklySteps(endDate: Date) {
         guard let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount) else { return }
 
-        let endDate = Date()
         guard let startDate = calendar.date(byAdding: .day, value: -6, to: endDate.startOfDay) else { return }
 
         let anchorDate = calendar.startOfDay(for: endDate)
@@ -474,6 +663,10 @@ struct ReportsView: View {
             return String(format: "%.1fk", value / 1000)
         }
         return "\(Int(value))"
+    }
+    
+    private func convertEnergy(_ kcal: Double) -> Double {
+        goals.energyUnit == .kilojoules ? kcal * 4.184 : kcal
     }
 
     // MARK: - Streak Logic
@@ -555,7 +748,7 @@ struct ReportsView: View {
                         Image(systemName: isCalendarExpanded ? "chevron.up" : "chevron.down")
                             .font(.caption.weight(.semibold))
                     }
-                    .foregroundStyle(Color("AppPrimaryAccent"))
+                    .foregroundStyle(primaryAccent)
                     .padding(.vertical, 8)
                 }
 
@@ -581,7 +774,7 @@ struct ReportsView: View {
 
         let cellBackground: Color = {
             if isSelected {
-                return Color("AppSecondaryAccent")
+                return secondaryAccent
             } else if isInStreak {
                 return Color.orange.opacity(colorScheme == .dark ? 0.2 : 0.15)
             } else if hasLogs {
@@ -613,7 +806,7 @@ struct ReportsView: View {
                         .foregroundStyle(isSelected ? .white : .orange)
                 } else if hasLogs {
                     Circle()
-                        .fill(isSelected ? .white : Color("AppPrimaryAccent"))
+                        .fill(isSelected ? .white : primaryAccent)
                         .frame(width: 4, height: 4)
                 } else {
                     Circle()
@@ -628,7 +821,7 @@ struct ReportsView: View {
                     .fill(cellBackground)
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(isToday && !isSelected ? Color("AppSecondaryAccent") : .clear, lineWidth: 2)
+                            .stroke(isToday && !isSelected ? secondaryAccent : .clear, lineWidth: 2)
                     )
             )
         }
@@ -719,7 +912,7 @@ struct ReportsView: View {
 
         let cellBackground: Color = {
             if isSelected {
-                return Color("AppSecondaryAccent")
+                return secondaryAccent
             } else if isInStreak {
                 return Color.orange.opacity(colorScheme == .dark ? 0.2 : 0.15)
             } else if hasLogs {
@@ -740,7 +933,7 @@ struct ReportsView: View {
                     .fill(cellBackground)
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(isToday && !isSelected ? Color("AppSecondaryAccent") : .clear, lineWidth: 2)
+                            .stroke(isToday && !isSelected ? secondaryAccent : .clear, lineWidth: 2)
                     )
 
                 VStack(spacing: 2) {
@@ -754,7 +947,7 @@ struct ReportsView: View {
                             .foregroundStyle(isSelected ? .white : .orange)
                     } else if hasLogs {
                         Circle()
-                            .fill(isSelected ? .white : Color("AppPrimaryAccent"))
+                            .fill(isSelected ? .white : primaryAccent)
                             .frame(width: 4, height: 4)
                     }
                 }
@@ -792,7 +985,7 @@ struct ReportsView: View {
             ForEach(healthManager.weeklyBurntCalories, id: \.date) { day in
                 BarMark(
                     x: .value("Date", day.date, unit: .day),
-                    y: .value("Calories", day.calories)
+                    y: .value("Calories", convertEnergy(day.calories))
                 )
                 .foregroundStyle(
                     LinearGradient(
@@ -828,7 +1021,7 @@ struct ReportsView: View {
                     x: .value("Date", day.date, unit: .day),
                     y: .value("Steps", day.steps)
                 )
-                .foregroundStyle(Color("AppSecondaryAccent"))
+                .foregroundStyle(secondaryAccent)
                 .cornerRadius(6)
             }
         }
@@ -920,17 +1113,28 @@ struct ReportsView: View {
                             .foregroundStyle(secondaryTextColor)
 
                         HStack(spacing: 4) {
-                            Text(String(format: "%.1f", currentWeight))
+                            Text(formatWeight(currentWeight))
                                 .font(.title.bold())
                                 .foregroundStyle(primaryTextColor)
                                 .contentTransition(.numericText())
-                            Text("kg")
+                            Text(weightUnit)
                                 .font(.title3)
                                 .foregroundStyle(secondaryTextColor)
                         }
                     }
 
                     Spacer()
+
+                    Button {
+                        showWeightHistory = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .font(.title3)
+                            .foregroundStyle(secondaryTextColor)
+                            .padding(8)
+                            .background(colorScheme == .dark ? Color.white.opacity(0.1) : Color.black.opacity(0.05))
+                            .clipShape(Circle())
+                    }
 
                     Button {
                         showLogWeightSheet = true
@@ -943,7 +1147,7 @@ struct ReportsView: View {
                         .foregroundStyle(.white)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
-                        .background(Color("AppPrimaryAccent"))
+                        .background(primaryAccent)
                         .clipShape(Capsule())
                     }
                 }
@@ -961,7 +1165,7 @@ struct ReportsView: View {
                             RoundedRectangle(cornerRadius: 6)
                                 .fill(
                                     hasReachedGoal ? Color.green :
-                                    (isOnTrack ? Color("AppPrimaryAccent") : Color.orange)
+                                    (isOnTrack ? primaryAccent : Color.orange)
                                 )
                                 .frame(width: geo.size.width * progress, height: 12)
                                 .animation(.easeInOut(duration: 0.5), value: progress)
@@ -970,13 +1174,13 @@ struct ReportsView: View {
                     .frame(height: 12)
 
                     HStack {
-                        Text("Start: \(String(format: "%.1f", startWeight)) kg")
+                        Text("Start: \(formatWeight(startWeight)) \(weightUnit)")
                             .font(.caption)
                             .foregroundStyle(tertiaryTextColor)
 
                         Spacer()
 
-                        Text("Goal: \(String(format: "%.1f", targetWeight)) kg")
+                        Text("Goal: \(formatWeight(targetWeight)) \(weightUnit)")
                             .font(.caption)
                             .foregroundStyle(tertiaryTextColor)
                     }
@@ -994,8 +1198,8 @@ struct ReportsView: View {
                     } else {
                         HStack(spacing: 4) {
                             Image(systemName: isLosingWeight ? "arrow.down.circle.fill" : "arrow.up.circle.fill")
-                                .foregroundStyle(isOnTrack ? Color("AppPrimaryAccent") : .orange)
-                            Text(String(format: "%.1f kg to go", weightToGo))
+                                .foregroundStyle(isOnTrack ? primaryAccent : .orange)
+                            Text("\(formatWeight(weightToGo)) \(weightUnit) to go")
                                 .font(.subheadline)
                                 .foregroundStyle(secondaryTextColor)
                         }
@@ -1024,17 +1228,22 @@ struct ReportsView: View {
         let annotationBgColor = colorScheme == .dark ? Color.black.opacity(0.25) : Color.white.opacity(0.9)
 
         let areaGradient = Gradient(colors: [
-            Color("AppPrimaryAccent").opacity(0.4),
-            Color("AppPrimaryAccent").opacity(0.05)
+            primaryAccent.opacity(0.4),
+            primaryAccent.opacity(0.05)
         ])
+        
+        // Convert weights to display units
+        let targetWeightDisplay = unitSystem.formatWeight(targetWeight)
+        let weightsInDisplayUnit = sortedLogs.map { unitSystem.formatWeight($0.weightKg) }
+        let minWeight = weightsInDisplayUnit.min() ?? 0
 
         Chart {
             // Target weight line
-            RuleMark(y: .value("Goal", targetWeight))
+            RuleMark(y: .value("Goal", targetWeightDisplay))
                 .lineStyle(.init(lineWidth: 1, dash: [6, 6]))
                 .foregroundStyle(goalLineColor)
                 .annotation(position: .topTrailing, alignment: .trailing) {
-                    Label("Goal \(String(format: "%.1f", targetWeight))", systemImage: "flag.fill")
+                    Label("Goal \(formatWeight(targetWeight))", systemImage: "flag.fill")
                         .font(.caption2.bold())
                         .foregroundStyle(annotationTextColor)
                         .padding(.horizontal, 6)
@@ -1043,30 +1252,32 @@ struct ReportsView: View {
                         .clipShape(Capsule())
                 }
 
-            ForEach(sortedLogs, id: \.id) { log in
+            ForEach(Array(sortedLogs.enumerated()), id: \.element.id) { index, log in
+                let weightDisplay = weightsInDisplayUnit[index]
+                
                 AreaMark(
                     x: .value("Date", log.timestamp),
-                    yStart: .value("Baseline", sortedLogs.map(\.weightKg).min() ?? 0),
-                    yEnd: .value("Weight", log.weightKg)
+                    yStart: .value("Baseline", minWeight),
+                    yEnd: .value("Weight", weightDisplay)
                 )
                 .interpolationMethod(.catmullRom)
                 .foregroundStyle(LinearGradient(gradient: areaGradient, startPoint: .top, endPoint: .bottom))
 
                 LineMark(
                     x: .value("Date", log.timestamp),
-                    y: .value("Weight", log.weightKg)
+                    y: .value("Weight", weightDisplay)
                 )
                 .interpolationMethod(.catmullRom)
                 .lineStyle(.init(lineWidth: 3))
-                .foregroundStyle(Color("AppPrimaryAccent"))
+                .foregroundStyle(primaryAccent)
 
                 PointMark(
                     x: .value("Date", log.timestamp),
-                    y: .value("Weight", log.weightKg)
+                    y: .value("Weight", weightDisplay)
                 )
                 .symbol(.circle)
                 .symbolSize(60)
-                .foregroundStyle(Color("AppPrimaryAccent"))
+                .foregroundStyle(primaryAccent)
             }
         }
         .chartXAxis {
@@ -1089,16 +1300,16 @@ struct ReportsView: View {
     @ViewBuilder
     private func _buildCalorieChart() -> some View {
         let sortedData = lastWeekSummaries.sorted { $0.date < $1.date }
-        let targetCalories = Double(goals.dailyCalories)
+        let targetCalories = convertEnergy(Double(goals.dailyCalories))
         let areaGradient = Gradient(colors: [
-            Color("AppPrimaryAccent").opacity(0.55),
-            Color("AppPrimaryAccent").opacity(0.08)
+            primaryAccent.opacity(0.55),
+            primaryAccent.opacity(0.08)
         ])
 
         let goalLineColor = colorScheme == .dark ? Color.white.opacity(0.5) : Color.black.opacity(0.35)
         let annotationTextColor = colorScheme == .dark ? Color.white.opacity(0.8) : primaryTextColor
         let annotationBgColor = colorScheme == .dark ? Color.black.opacity(0.25) : Color.white.opacity(0.9)
-        let pointDefaultColor = colorScheme == .dark ? Color.white : Color("AppPrimaryAccent")
+        let pointDefaultColor = colorScheme == .dark ? Color.white : primaryAccent
         let capsuleDefaultColor = colorScheme == .dark ? Color.white.opacity(0.4) : Color.black.opacity(0.2)
 
         Chart {
@@ -1123,29 +1334,29 @@ struct ReportsView: View {
                 AreaMark(
                     x: .value("Day", day.date),
                     yStart: .value("Baseline", 0),
-                    yEnd: .value("Calories", day.totalCalories)
+                    yEnd: .value("Calories", convertEnergy(day.totalCalories))
                 )
                 .interpolationMethod(.catmullRom)
                 .foregroundStyle(LinearGradient(gradient: areaGradient, startPoint: .top, endPoint: .bottom))
 
                 LineMark(
                     x: .value("Day", day.date),
-                    y: .value("Calories", day.totalCalories)
+                    y: .value("Calories", convertEnergy(day.totalCalories))
                 )
                 .interpolationMethod(.catmullRom)
                 .lineStyle(.init(lineWidth: 3))
-                .foregroundStyle(Color("AppPrimaryAccent"))
+                .foregroundStyle(primaryAccent)
 
                 PointMark(
                     x: .value("Day", day.date),
-                    y: .value("Calories", day.totalCalories)
+                    y: .value("Calories", convertEnergy(day.totalCalories))
                 )
                 .symbol(.circle)
                 .symbolSize(day.metCalorieGoal ? 120 : 80)
                 .foregroundStyle(day.metCalorieGoal ? Color.green : pointDefaultColor)
                 .annotation(position: .top) {
                     VStack(spacing: 2) {
-                        Text("\(Int(day.totalCalories))")
+                        Text("\(Int(convertEnergy(day.totalCalories)))")
                             .font(.caption2.bold())
                             .foregroundStyle(primaryTextColor)
                         Capsule()
@@ -1159,7 +1370,7 @@ struct ReportsView: View {
                         xStart: .value("Highlight Start", day.date.addingTimeInterval(-18_000)),
                         xEnd: .value("Highlight End", day.date.addingTimeInterval(18_000)),
                         yStart: .value("Zero", 0),
-                        yEnd: .value("Calories Highlight", day.totalCalories)
+                        yEnd: .value("Calories Highlight", convertEnergy(day.totalCalories))
                     )
                     .foregroundStyle(Color.green.opacity(0.08))
                 }
@@ -1201,7 +1412,7 @@ struct ReportsView: View {
             if colorScheme == .light {
                 RadialGradient(
                     gradient: Gradient(colors: [
-                        Color("AppSecondaryAccent").opacity(0.15),
+                        secondaryAccent.opacity(0.15),
                         .clear
                     ]),
                     center: .topLeading,
@@ -1214,7 +1425,7 @@ struct ReportsView: View {
 
                 RadialGradient(
                     gradient: Gradient(colors: [
-                        Color("AppPrimaryAccent").opacity(0.12),
+                        primaryAccent.opacity(0.12),
                         .clear
                     ]),
                     center: .bottomTrailing,
@@ -1321,8 +1532,10 @@ struct ActivityStatCard: View {
 struct LogWeightSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject var themeManager: ThemeManager
 
     let currentWeight: Double
+    let unitSystem: UnitSystem
     let onSave: (Double) -> Void
 
     @State private var weightInput: String = ""
@@ -1335,14 +1548,48 @@ struct LogWeightSheet: View {
     private var secondaryTextColor: Color {
         colorScheme == .dark ? .white.opacity(0.8) : Color(red: 100/255, green: 100/255, blue: 110/255)
     }
+    
+    private var primaryAccent: Color {
+        colorScheme == .dark ? themeManager.currentTheme.darkPrimaryColor : themeManager.currentTheme.primaryColor
+    }
+    
+    private var weightUnit: String {
+        unitSystem.weightUnit
+    }
+    
+    private func formatWeight(_ weightInKg: Double) -> String {
+        let converted = unitSystem.formatWeight(weightInKg)
+        return String(format: "%.1f", converted)
+    }
 
     private var parsedWeight: Double? {
         Double(weightInput.replacingOccurrences(of: ",", with: "."))
     }
+    
+    private var parsedWeightInKg: Double? {
+        guard let displayWeight = parsedWeight else { return nil }
+        return unitSystem.convertWeightToMetric(displayWeight)
+    }
 
-    private var isValidWeight: Bool {
-        guard let weight = parsedWeight else { return false }
-        return weight >= InputValidation.minWeightKg && weight <= InputValidation.maxWeightKg
+    var isValidWeight: Bool {
+        guard let weightKg = parsedWeightInKg else { return false }
+        return weightKg >= InputValidation.minWeightKg && weightKg <= InputValidation.maxWeightKg
+    }
+
+    private func adjustWeight(by amount: Double) {
+        let currentDisplay = parsedWeight ?? unitSystem.formatWeight(currentWeight)
+        let newDisplayWeight = currentDisplay + amount
+        
+        // Convert to kg to validate
+        let newWeightKg = unitSystem.convertWeightToMetric(newDisplayWeight)
+        let validatedKg = max(InputValidation.minWeightKg, min(InputValidation.maxWeightKg, newWeightKg))
+        
+        // Convert back to display units
+        let validatedDisplay = unitSystem.formatWeight(validatedKg)
+        weightInput = String(format: "%.1f", validatedDisplay)
+        
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
     }
 
     var body: some View {
@@ -1368,21 +1615,49 @@ struct LogWeightSheet: View {
 
             // Weight input
             VStack(spacing: 12) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    TextField("0.0", text: $weightInput)
-                        .keyboardType(.decimalPad)
-                        .font(.system(size: 56, weight: .bold, design: .rounded))
-                        .foregroundStyle(primaryTextColor)
-                        .multilineTextAlignment(.center)
-                        .focused($isInputFocused)
-                        .frame(maxWidth: 200)
-
-                    Text("kg")
-                        .font(.title)
-                        .foregroundStyle(secondaryTextColor)
+                HStack(spacing: 20) {
+                    // Decrement Button
+                    Button {
+                        adjustWeight(by: -0.1)
+                    } label: {
+                        Image(systemName: "minus")
+                            .font(.title2.bold())
+                            .foregroundStyle(primaryAccent)
+                            .frame(width: 44, height: 44)
+                            .background(primaryAccent.opacity(0.1))
+                            .clipShape(Circle())
+                    }
+                    
+                    // Input Field
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        TextField("0.0", text: $weightInput)
+                            .keyboardType(.decimalPad)
+                            .font(.system(size: 48, weight: .bold, design: .rounded))
+                            .foregroundStyle(primaryTextColor)
+                            .multilineTextAlignment(.center)
+                            .focused($isInputFocused)
+                            .frame(width: 140)
+                        
+                        Text(weightUnit)
+                            .font(.title2)
+                            .fontWeight(.medium)
+                            .foregroundStyle(secondaryTextColor)
+                    }
+                    
+                    // Increment Button
+                    Button {
+                        adjustWeight(by: 0.1)
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.title2.bold())
+                            .foregroundStyle(primaryAccent)
+                            .frame(width: 44, height: 44)
+                            .background(primaryAccent.opacity(0.1))
+                            .clipShape(Circle())
+                    }
                 }
-
-                Text("Current: \(String(format: "%.1f", currentWeight)) kg")
+                
+                Text("Current: \(formatWeight(currentWeight)) \(weightUnit)")
                     .font(.subheadline)
                     .foregroundStyle(secondaryTextColor)
             }
@@ -1391,8 +1666,8 @@ struct LogWeightSheet: View {
 
             // Save button
             Button {
-                if let weight = parsedWeight, isValidWeight {
-                    onSave(weight)
+                if let weightKg = parsedWeightInKg, isValidWeight {
+                    onSave(weightKg)
                     dismiss()
                 }
             } label: {
@@ -1401,7 +1676,7 @@ struct LogWeightSheet: View {
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
-                    .background(isValidWeight ? Color("AppPrimaryAccent") : Color.gray.opacity(0.5))
+                    .background(isValidWeight ? primaryAccent : Color.gray.opacity(0.5))
                     .clipShape(RoundedRectangle(cornerRadius: 16))
             }
             .disabled(!isValidWeight)
@@ -1409,7 +1684,7 @@ struct LogWeightSheet: View {
             .padding(.bottom, 24)
         }
         .onAppear {
-            weightInput = String(format: "%.1f", currentWeight)
+            weightInput = formatWeight(currentWeight)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 isInputFocused = true
             }

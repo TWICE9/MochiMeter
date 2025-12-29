@@ -65,6 +65,14 @@ struct HealthRingsView: View {
     private var goals: UserGoals {
         allGoals.first ?? UserGoals()
     }
+    
+    private var energyUnit: EnergyUnit {
+        goals.energyUnit
+    }
+    
+    private func convertEnergy(_ kcal: Double) -> Double {
+        energyUnit == .kilojoules ? kcal * 4.184 : kcal
+    }
 
     private var foodLogsToday: [LoggedFood] {
         let startOfDay = Date().startOfDay
@@ -194,7 +202,7 @@ struct HealthRingsView: View {
                             Circle()
                                 .fill(Color(red: 0.98, green: 0.24, blue: 0.45))
                                 .frame(width: 10, height: 10)
-                            Text("CALORIES")
+                            Text(energyUnit == .kilojoules ? "KILOJOULES" : "CALORIES")
                                 .font(.caption2)
                                 .fontWeight(.semibold)
                                 .foregroundStyle(tertiaryTextColor)
@@ -202,13 +210,13 @@ struct HealthRingsView: View {
 
                         Spacer()
 
-                        Text("\(Int(animatedCalories))")
+                        Text("\(Int(convertEnergy(animatedCalories)))")
                             .font(.title3)
                             .fontWeight(.bold)
                             .foregroundStyle(primaryTextColor)
                             .contentTransition(.numericText())
 
-                        Text("/ \(Int(goals.dailyCalories))")
+                        Text("/ \(Int(convertEnergy(goals.dailyCalories)))")
                             .font(.caption)
                             .foregroundStyle(mutedTextColor)
                     }
@@ -256,13 +264,13 @@ struct HealthRingsView: View {
 
                         Spacer()
 
-                        Text("\(Int(animatedActive))")
+                        Text("\(Int(convertEnergy(animatedActive)))")
                             .font(.title3)
                             .fontWeight(.bold)
                             .foregroundStyle(primaryTextColor)
                             .contentTransition(.numericText())
 
-                        Text("/ 500 kcal")
+                        Text("/ \(Int(convertEnergy(500))) \(energyUnit.unitLabel)")
                             .font(.caption)
                             .foregroundStyle(mutedTextColor)
                     }

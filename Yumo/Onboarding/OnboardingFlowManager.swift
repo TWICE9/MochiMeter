@@ -11,7 +11,7 @@ import SwiftUI
 class OnboardingFlowManager {
     // MARK: - Navigation
     var currentPage: Int = 0
-    let totalPages: Int = 19  // Added weight loss intensity page
+    let totalPages: Int = 20  // Added theme selection page
     var isNavigating: Bool = false
     private let navigationCooldown: Double = 0.45  // Prevent rapid double-taps
 
@@ -29,6 +29,14 @@ class OnboardingFlowManager {
     var weightGoal: GoalType = .maintain
     var targetWeight: Double = 70
     var weeklyWeightChangeKg: Double = 0.5  // Default: 0.5kg per week (range: 0.25 to 1.0)
+    
+    // Unit System
+    var unitSystem: UnitSystem = .metric
+    
+    // Imperial unit properties
+    var weightLbs: Int = 154 // ~70kg
+    var heightFeet: Int = 5
+    var heightInches: Int = 7 // ~170cm
 
     // New Psychographic Fields
     var selectedBlockers: Set<Blocker> = []
@@ -128,6 +136,7 @@ class OnboardingFlowManager {
         // If maintaining weight, target should equal current weight
         goals.targetWeight = weightGoal == .maintain ? weight : targetWeight
         goals.weeklyWeightChangeKg = weeklyWeightChangeKg
+        goals.unitSystem = unitSystem  // Save selected unit system
 
         // Psychographics
         goals.blockers = Array(selectedBlockers)
@@ -174,6 +183,38 @@ class OnboardingFlowManager {
         // Also update target weight if it's still default
         if targetWeight == 0 || targetWeight == Double(weightWhole) {
             targetWeight = weight
+        }
+    }
+    
+    // MARK: - Imperial Conversion Methods
+    func updateWeightFromImperialPickers() {
+        // Convert lbs to kg for storage
+        weight = unitSystem.convertWeightToMetric(Double(weightLbs))
+        
+        // Update target weight if needed
+        if targetWeight == 0 || abs(targetWeight - weight) < 1 {
+            targetWeight = weight
+        }
+    }
+    
+    func updateHeightFromImperialPickers() {
+        // Convert feet/inches to cm for storage
+        height = unitSystem.convertHeightToMetric(primary: Double(heightFeet), secondary: Double(heightInches))
+    }
+    
+    func convertUnitsOnChange(from oldSystem: UnitSystem, to newSystem: UnitSystem) {
+        if oldSystem == .metric && newSystem == .imperial {
+            // Convert current metric values to imperial
+            let (feet, inches) = newSystem.formatHeight(height)
+            heightFeet = Int(feet)
+            heightInches = Int(inches ?? 0)
+            weightLbs = Int(newSystem.formatWeight(weight))
+        } else if oldSystem == .imperial && newSystem == .metric {
+            // Convert current imperial values to metric
+            height = oldSystem.convertHeightToMetric(primary: Double(heightFeet), secondary: Double(heightInches))
+            weight = oldSystem.convertWeightToMetric(Double(weightLbs))
+            weightWhole = Int(weight)
+            weightDecimal = Int((weight - Double(weightWhole)) * 10)
         }
     }
 }

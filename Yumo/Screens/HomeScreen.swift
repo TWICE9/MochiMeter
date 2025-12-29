@@ -5,12 +5,16 @@ import SwiftData
 import Combine
 import WidgetKit
 import UserNotifications
+import Auth
 
 struct HomeScreen: View {
     
     // 1. Environment & Data Queries
+    @EnvironmentObject private var authManager: AuthManager
     @EnvironmentObject private var tabRouter: TabRouter
     @EnvironmentObject private var superwallManager: SuperwallManager
+    @EnvironmentObject private var themeManager: ThemeManager
+    @EnvironmentObject private var adManager: AdManager
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
@@ -68,6 +72,8 @@ struct HomeScreen: View {
     @State private var selectedDate: Date = Calendar.current.startOfDay(for: Date())
     @State private var quickMealText: String = ""
     @FocusState private var isQuickMealFocused: Bool
+    @State private var showQuickMealRetryAlert = false
+    @State private var failedQuickMealText = ""
 
     // Background animation state
     @State private var offset1: CGSize = .zero
@@ -90,6 +96,28 @@ struct HomeScreen: View {
     private var isViewingToday: Bool {
         Calendar.current.isDateInToday(selectedDate)
     }
+    
+    // MARK: - Dynamic Macro Colors (avoid theme color)
+    private var proteinColor: Color {
+        // Default: Mango yellow
+        let defaultColor = Color(red: 1.0, green: 0.85, blue: 0.4)
+        // If theme is mango (yellow), use pink instead
+        return themeManager.currentTheme == .mango ? Color(red: 1.0, green: 0.55, blue: 0.65) : defaultColor
+    }
+    
+    private var carbsColor: Color {
+        // Default: Matcha green
+        let defaultColor = Color(red: 0.6, green: 0.9, blue: 0.7)
+        // If theme is matcha (green), use orange instead
+        return themeManager.currentTheme == .matcha ? Color(red: 1.0, green: 0.7, blue: 0.4) : defaultColor
+    }
+    
+    private var fatColor: Color {
+        // Default: Taro purple
+        let defaultColor = Color(red: 0.75, green: 0.65, blue: 0.95)
+        // If theme is taro (purple), use coral instead
+        return themeManager.currentTheme == .taro ? Color(red: 1.0, green: 0.6, blue: 0.5) : defaultColor
+    }
 
     private var totalCaloriesToday: Double {
         guard goals.dailyCalories > 0 else { return 0.0 }
@@ -102,6 +130,23 @@ struct HomeScreen: View {
     private var recentLogs: [LoggedFood] { foodLogsToday }
     
     var body: some View {
+        mainContent
+            .alert("Quick Meal Timeout", isPresented: $showQuickMealRetryAlert) {
+                Button("Try Again") {
+                    quickMealText = failedQuickMealText
+                    Task {
+                        await logQuickMeal()
+                    }
+                }
+                Button("Cancel", role: .cancel) {
+                    failedQuickMealText = ""
+                }
+            } message: {
+                Text("The AI took too long to analyze your meal. Would you like to try again?")
+            }
+    }
+    
+    private var mainContent: some View {
         NavigationStack(path: $tabRouter.homePath) {
             ZStack {
                 _buildDynamicBackground()
@@ -118,6 +163,10 @@ struct HomeScreen: View {
                             _buildCalorieWheel()
 
                             _buildDateSelector()
+
+                            // Ad Banner
+                            ConditionalAdBanner()
+                                .padding(.vertical, 10)
 
                             _buildRecentLogs()
 
@@ -156,50 +205,9 @@ struct HomeScreen: View {
                 }
             }
             .navigationBarHidden(true)
-            
-            // ⭐️ EDIT IS IN HERE
-            // This handler manages all navigation destinations
             .navigationDestination(for: HomeDestination.self) { destination in
-                switch destination {
-                case .search:
-                    SearchScreen()
-                case .scan:
-                    AICameraScanView()
-                case .recipes:
-                    RecipeListView()
-                case .reminders:
-                    RemindersView()
-                case .detail(let logID): // Receives an ID
-                    // Fetch the log from the ID
-                    if let log = fetchLog(from: logID) {
-                        FoodLogDetailView(log: log, goals: goals)
-                    }
-                case .logProduct(let product):
-                    LogScannedFoodView(
-                        product: product,
-                        onLogComplete: {
-                            // This handler pops all the way back to root
-                            tabRouter.homePath = NavigationPath()
-                            tabRouter.scrollHomeToTop()
-                        }
-                    )
-                    
-                case .shoppingList:
-                                    // We add this for exhaustiveness.
-                                    // It shouldn't be reachable since we use the Tab button.
-                    ShoppingListView()
-                case .reports:
-                    HealthRingsView()
-                case .fasting:
-                    FastingView()
-                case .community:
-                    Text("Community View (Coming Soon)")
-                case .challenges:
-                    Text("Challenges View (Coming Soon)")
-                }
+                navigationDestinationView(for: destination)
             }
-            
-            // --- Modal Sheets ---
             .sheet(isPresented: $showWaterSheet) {
                 WaterScreen()
                     .presentationDetents([.large])
@@ -208,30 +216,21 @@ struct HomeScreen: View {
                 FastingScreen()
                     .presentationDetents([.medium, .large])
             }
-
-            // --- Data & Animation Triggers ---
             .task {
                 await refreshData()
-
-                // Remove any existing streak reminder notifications
                 UNUserNotificationCenter.current().removePendingNotificationRequests(
                     withIdentifiers: ["StreakReminderNoon", "StreakReminderEvening"]
                 )
             }
             .onAppear {
-                // Refresh data every time HomeScreen appears (e.g., after logging food)
-                // Refresh data every time HomeScreen appears (e.g., after logging food)
                 Task { await refreshData() }
             }
             .onChange(of: tabRouter.selectedTab) { oldTab, newTab in
-                // Refresh when user switches TO home tab
                 if newTab == .home {
-                    // Quick delay to ensure SwiftData has processed any pending saves
                     Task {
-                        try? await Task.sleep(nanoseconds: 50_000_000) // 0.05 seconds
+                        try? await Task.sleep(nanoseconds: 50_000_000)
                         await refreshData()
                     }
-                    // Scroll to top with a delay to ensure the view is rendered
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                         tabRouter.scrollHomeToTop()
                     }
@@ -250,14 +249,52 @@ struct HomeScreen: View {
             }
             .onChange(of: selectedDate) { _, _ in
                 updateAnimatedValues()
+                preloadImagesForSelectedDate()
             }
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("FoodLogCreated"))) { _ in
                 Task {
                     await refreshData()
                 }
-                // Scroll to top when new food is logged
                 tabRouter.scrollHomeToTop()
             }
+        }
+    }
+    
+    @ViewBuilder
+    private func navigationDestinationView(for destination: HomeDestination) -> some View {
+        switch destination {
+        case .search:
+            SearchScreen()
+        case .scan:
+            AICameraScanView()
+        case .recipes:
+            RecipeListView()
+        case .reminders:
+            RemindersView()
+        case .detail(let logID):
+            if let log = fetchLog(from: logID) {
+                FoodLogDetailView(log: log, goals: goals)
+            }
+        case .logProduct(let product):
+            LogScannedFoodView(
+                product: product,
+                onLogComplete: {
+                    tabRouter.homePath = NavigationPath()
+                    tabRouter.scrollHomeToTop()
+                }
+            )
+        case .shoppingList:
+            ShoppingListView(userId: authManager.currentUser?.id.uuidString.lowercased() ?? "")
+        case .reports:
+            HealthRingsView()
+        case .fasting:
+            FastingView()
+        case .savedFoods:
+            SavedFoodsView(userId: authManager.currentUser?.id.uuidString.lowercased() ?? "")
+        case .community:
+            Text("Community View (Coming Soon)")
+        case .challenges:
+            Text("Challenges View (Coming Soon)")
         }
     }
 
@@ -297,17 +334,11 @@ struct HomeScreen: View {
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .background(
-                            Group {
-                                if colorScheme == .light {
-                                    Color("AppSecondaryAccent")
-                                } else {
-                                    LinearGradient(
-                                        colors: [Color("AppSecondaryAccent"), Color("AppPrimaryAccent")],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                }
-                            }
+                            LinearGradient(
+                                colors: themeManager.currentTheme.buttonGradient(for: colorScheme),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
                         .clipShape(Capsule())
                     }
@@ -442,9 +473,7 @@ struct HomeScreen: View {
                     .trim(from: 0, to: progress)
                     .stroke(
                         AngularGradient(
-                            gradient: Gradient(colors: colorScheme == .light
-                                ? [Color(red: 0.0, green: 0.75, blue: 1.0), Color(red: 0.0, green: 0.45, blue: 1.0), Color(red: 0.0, green: 0.75, blue: 1.0)]
-                                : [Color("AppSecondaryAccent"), Color("AppPrimaryAccent"), Color("AppSecondaryAccent")]),
+                            gradient: Gradient(colors: themeManager.currentTheme.wheelGradient(for: colorScheme)),
                             center: .center
                         ),
                         style: StrokeStyle(lineWidth: calorieRingLineWidth, lineCap: .round)
@@ -476,11 +505,11 @@ struct HomeScreen: View {
 
                 // Center text
                 VStack(spacing: isRegularWidth ? 6 : 4) {
-                    Text("\(Int(animatedCalories))")
-                        .font(.custom("MochibopBold", size: calorieFontSize))
+                    Text("\(Int(convertEnergy(animatedCalories)))")
+                        .font(.system(size: calorieFontSize, weight: .bold, design: .default))
                         .foregroundColor(isOverGoal ? .red : Color("AppTextPrimary"))
                         .contentTransition(.numericText())
-                    Text("of \(Int(goals.dailyCalories)) kcal")
+                    Text("of \(Int(convertEnergy(goals.dailyCalories))) \(goals.energyUnit.unitLabel)")
                         .font(isRegularWidth ? .title3 : .headline)
                         .foregroundColor(Color("AppTextPrimary").opacity(0.7))
                 }
@@ -521,11 +550,11 @@ struct HomeScreen: View {
 
             // Macro rings with adaptive sizing
             HStack(spacing: macroRingSpacing) {
-                MacroProgressRing(macroName: "Protein", current: animatedProtein, goal: goals.dailyProtein, color: .pink, lineWidth: macroRingLineWidth, ringSize: macroRingSize)
+                MacroProgressRing(macroName: "Protein", current: animatedProtein, goal: goals.dailyProtein, color: proteinColor, lineWidth: macroRingLineWidth, ringSize: macroRingSize)
                     .frame(width: macroRingSize, height: macroRingSize)
-                MacroProgressRing(macroName: "Carbs", current: animatedCarbs, goal: goals.dailyCarbs, color: colorScheme == .light ? Color(red: 0.2, green: 0.5, blue: 0.9) : Color("AppSecondaryAccent"), lineWidth: macroRingLineWidth, ringSize: macroRingSize)
+                MacroProgressRing(macroName: "Carbs", current: animatedCarbs, goal: goals.dailyCarbs, color: carbsColor, lineWidth: macroRingLineWidth, ringSize: macroRingSize)
                     .frame(width: macroRingSize, height: macroRingSize)
-                MacroProgressRing(macroName: "Fat", current: animatedFat, goal: goals.dailyFat, color: .orange, lineWidth: macroRingLineWidth, ringSize: macroRingSize)
+                MacroProgressRing(macroName: "Fat", current: animatedFat, goal: goals.dailyFat, color: fatColor, lineWidth: macroRingLineWidth, ringSize: macroRingSize)
                     .frame(width: macroRingSize, height: macroRingSize)
             }
             .padding(.horizontal, isRegularWidth ? 48 : 32)
@@ -594,8 +623,8 @@ struct HomeScreen: View {
 
     @ViewBuilder
     private func _buildFoodLogCard(log: LoggedFood) -> some View {
-        // Check if this log has a photo or is analyzing
-        let hasVisualContent = log.isAnalyzing || log.photoData != nil
+        // Check if this log has a photo or is analyzing, or has a cloud image path
+        let hasVisualContent = log.isAnalyzing || log.photoData != nil || log.cloudImagePath != nil
 
         if hasVisualContent {
             GeometryReader { geo in
@@ -621,6 +650,23 @@ struct HomeScreen: View {
                                 AsyncThumbnailImage(photoData: photoData, size: max(imageWidth, cardHeight))
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                                     .clipped()
+                            } else if let cloudPath = log.cloudImagePath {
+                                // Cloud image placeholder & loader
+                                ZStack {
+                                    Rectangle()
+                                        .fill(Color.gray.opacity(0.1))
+                                    ProgressView()
+                                        .scaleEffect(0.7)
+                                }
+                                .task {
+                                    if let data = await ImageStorageManager.shared.downloadImage(path: cloudPath) {
+                                        await MainActor.run {
+                                            withAnimation(.easeIn(duration: 0.3)) {
+                                                log.photoData = data
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                         .frame(width: imageWidth, height: cardHeight)
@@ -687,7 +733,7 @@ struct HomeScreen: View {
                                     .foregroundStyle(.gray)
                             }
 
-                            Text("\(Int(log.totalCalories)) cal")
+                            Text("\(Int(convertEnergy(log.totalCalories))) \(goals.energyUnit.unitLabel)")
                                 .font(.subheadline.weight(.bold))
                                 .foregroundStyle(Color("AppTextPrimary").opacity(0.9))
 
@@ -746,7 +792,7 @@ struct HomeScreen: View {
                 }
 
                 // Line 2: Calories
-                Text("\(Int(log.totalCalories)) cal")
+                Text("\(Int(convertEnergy(log.totalCalories))) \(goals.energyUnit.unitLabel)")
                     .font(.subheadline)
                     .fontWeight(.bold)
                     .foregroundStyle(Color("AppTextPrimary").opacity(0.9))
@@ -827,8 +873,8 @@ struct HomeScreen: View {
                         _buildCompactToolButton(title: "Shopping", icon: "cart.fill")
                     }.buttonStyle(.plain)
 
-                    NavigationLink(value: HomeDestination.reports) {
-                        _buildCompactToolButton(title: "Activity", icon: "figure.run")
+                    NavigationLink(value: HomeDestination.savedFoods) {
+                        _buildCompactToolButton(title: "Saved", icon: "star.fill")
                     }.buttonStyle(.plain)
 
                     NavigationLink(value: HomeDestination.fasting) {
@@ -894,9 +940,7 @@ struct HomeScreen: View {
                         .font(.system(size: 28))
                         .foregroundStyle(
                             LinearGradient(
-                                colors: colorScheme == .light
-                                    ? [Color(red: 0.3, green: 0.7, blue: 0.4), Color(red: 0.2, green: 0.5, blue: 0.9)]
-                                    : [Color("AppPrimaryAccent"), Color("AppSecondaryAccent")],
+                                colors: themeManager.currentTheme.buttonGradient(for: colorScheme),
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
@@ -953,7 +997,29 @@ struct HomeScreen: View {
         await scheduleWeeklyWeightReminder()
 
         // Update animations with new data
+        // Update animations with new data
         updateAnimatedValues()
+        
+        // Preload images for current view
+        preloadImagesForSelectedDate()
+    }
+
+    private func preloadImagesForSelectedDate() {
+        let logsToCheck = recentLogs
+        
+        Task(priority: .background) {
+            for log in logsToCheck {
+                if log.photoData == nil, let path = log.cloudImagePath {
+                    if let data = await ImageStorageManager.shared.downloadImage(path: path) {
+                        await MainActor.run {
+                            withAnimation(.easeIn(duration: 0.3)) {
+                                log.photoData = data
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     @MainActor
@@ -963,15 +1029,15 @@ struct HomeScreen: View {
         let newTotalCarbs = totalCarbsToday
         let newTotalFat = totalFatToday
 
-        // Smooth update to avoid ring popping when dropping to zero
-        withAnimation(.easeOut(duration: 0.9)) {
+        // Bouncy spring animation for playful "mochi" feel
+        withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
             animatedCalories = newTotalCalories
             animatedProtein = newTotalProtein
             animatedCarbs = newTotalCarbs
             animatedFat = newTotalFat
         }
 
-        // Animate overflow calories with delay
+        // Animate overflow calories with delay and bounce
         let overflowAmount = max(0, newTotalCalories - goals.dailyCalories)
         let wasOverGoal = animatedOverflowCalories > 0
         let isNowOverGoal = overflowAmount > 0
@@ -983,8 +1049,8 @@ struct HomeScreen: View {
                     animatedOverflowCalories = 0
                     try? await Task.sleep(nanoseconds: 1_200_000_000) // 1.2 seconds
                 }
-                // Animate to new overflow amount (immediately if already over goal, delayed if not)
-                withAnimation(.easeOut(duration: 1.2)) {
+                // Animate to new overflow amount with bounce
+                withAnimation(.spring(response: 0.7, dampingFraction: 0.65)) {
                     animatedOverflowCalories = overflowAmount
                 }
             } else {
@@ -1154,6 +1220,8 @@ struct HomeScreen: View {
                 placeholderLog.fatPerServing = analysis.fat
                 placeholderLog.fiberPerServing = analysis.fiber
                 placeholderLog.sugarPerServing = analysis.sugar
+                placeholderLog.saltPerServing = analysis.salt
+                placeholderLog.potassiumPerServing = analysis.potassium
                 placeholderLog.servingSizeDescription = analysis.servingSize
                 placeholderLog.aiIngredients = analysis.ingredients
                 placeholderLog.aiConfidence = analysis.confidence
@@ -1183,6 +1251,14 @@ struct HomeScreen: View {
                 NotificationCenter.default.post(name: Notification.Name("FoodLogCreated"), object: nil)
 
                 print("❌ Quick meal analysis failed: \(error.localizedDescription)")
+                
+                // Show retry alert if it was a timeout
+                if error.localizedDescription.contains("took too long") || error.localizedDescription.contains("timeout") {
+                    await MainActor.run {
+                        failedQuickMealText = trimmed
+                        showQuickMealRetryAlert = true
+                    }
+                }
             }
         }
     }
@@ -1254,46 +1330,57 @@ struct HomeScreen: View {
 
         do {
             // Search USDA foods
-            let results = try await SupabaseService().searchUSDAFoodsByName(query, limit: 10)
+            // Increase limit to ensure we find the exact match even if other items have higher search rank
+            let results = try await SupabaseService().searchUSDAFoodsByName(query, limit: 50)
 
-            // Look for a close match
+            // Look for the best match among results
+            var bestMatch: USDAFoodRow?
+            var highestScore: Double = -1.0
+            
             for food in results {
                 let normalizedFoodName = food.foodName.lowercased()
-
-                // Exact match - always accept
+                
+                // Exact match - always return immediately
                 if normalizedFoodName == normalizedQuery {
                     return food
                 }
-
-                // Check if the query is contained in the USDA food name or vice versa
-                // USDA names are often more detailed like "Chicken, breast, meat only, cooked, roasted"
+                
+                // Word Coverage Check
                 let queryWords = Set(normalizedQuery.split(separator: " ").map(String.init))
-                // USDA names use commas and spaces as separators
+                
                 let foodWords = Set(normalizedFoodName
                     .replacingOccurrences(of: ",", with: " ")
                     .split(separator: " ")
                     .map { String($0).trimmingCharacters(in: .whitespaces) }
                     .filter { !$0.isEmpty })
-
+                
                 // Calculate how many query words appear in the food name
                 let matchingWords = queryWords.filter { queryWord in
                     foodWords.contains { foodWord in
                         foodWord.contains(queryWord) || queryWord.contains(foodWord)
                     }
                 }
-
-                // Require high coverage - user must have entered most key words (90%+)
+                
                 let coverage = queryWords.isEmpty ? 0 : Double(matchingWords.count) / Double(queryWords.count)
+                
+                // Only consider candidates where the query is well-represented
                 if coverage >= 0.90 {
-                    return food
-                }
-
-                // Also check string similarity - require 95%+ match
-                let similarity = calculateSimilarity(normalizedQuery, normalizedFoodName)
-                if similarity > 0.95 {
-                    return food
+                    // Calculate similarity to prefer closer matches (shorter/closer names)
+                    let similarity = calculateSimilarity(normalizedQuery, normalizedFoodName)
+                    
+                    if similarity > highestScore {
+                        highestScore = similarity
+                        bestMatch = food
+                    }
                 }
             }
+            
+            // Enforce a strict minimum quality threshold to prevent returning irrelevant items
+            if highestScore >= 0.95 {
+                return bestMatch
+            }
+            
+            return nil
         } catch {
             print("❌ USDA search failed: \(error.localizedDescription)")
         }
@@ -1406,6 +1493,20 @@ struct HomeScreen: View {
     private func hapticSelection() {
         let generator = UISelectionFeedbackGenerator()
         generator.selectionChanged()
+    }
+
+    // MARK: - Helpers
+    private func convertEnergy(_ kcal: Double) -> Double {
+        goals.energyUnit == .kilojoules ? kcal * 4.184 : kcal
+    }
+    
+    private func dateWithTime(hour: Int, minute: Int) -> Date {
+        let calendar = Calendar.current
+        var components = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: Date())
+        components.hour = hour
+        components.minute = minute
+        components.second = 0
+        return calendar.date(from: components) ?? Date()
     }
 
     // MARK: - Streak
@@ -1812,10 +1913,7 @@ struct DateButton: View {
     let action: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
-
-    // Light mode accent colors (green-blue)
-    private let lightAccentGreen = Color(red: 0.3, green: 0.7, blue: 0.4)
-    private let lightAccentBlue = Color(red: 0.2, green: 0.5, blue: 0.9)
+    @EnvironmentObject var themeManager: ThemeManager
 
     private var dayNumber: String {
         let formatter = DateFormatter()
@@ -1845,10 +1943,10 @@ struct DateButton: View {
                 if isInStreak {
                     Image(systemName: "flame.fill")
                         .font(.system(size: 8))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(isSelected ? .white : .orange)
                 } else if isToday {
                     Circle()
-                        .fill(colorScheme == .light ? lightAccentBlue : Color("AppSecondaryAccent"))
+                        .fill(colorScheme == .light ? themeManager.currentTheme.primaryColor : themeManager.currentTheme.darkSecondaryColor)
                         .frame(width: 3, height: 3)
                 } else {
                     Circle()
@@ -1879,14 +1977,18 @@ struct DateButton: View {
 
     private var backgroundColor: Color {
         if isSelected {
-            return colorScheme == .light ? lightAccentBlue : Color("AppPrimaryAccent")
+            // Use a muted, softer version of the theme color
+            let baseColor = colorScheme == .light 
+                ? themeManager.currentTheme.primaryColor 
+                : themeManager.currentTheme.darkPrimaryColor
+            return baseColor.opacity(colorScheme == .light ? 0.65 : 0.75)
         } else if hasLogs {
             return Color("AppTextPrimary").opacity(0.08)
         } else {
             return Color("AppTextPrimary").opacity(0.03)
         }
     }
-
+    
     private var borderColor: Color {
         if isSelected {
             return Color.clear
@@ -1976,7 +2078,7 @@ struct AnalyzingProgressView: View {
     }
 }
 
-// MARK: - Blob Shape
+// MARK: - Blob Shape (Gentle mochi - slightly taller)
 struct BlobShape: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()
@@ -1986,25 +2088,95 @@ struct BlobShape: Shape {
         // Start top center
         path.move(to: CGPoint(x: w * 0.5, y: 0))
         
-        // Top right curve (bulge out)
-        path.addCurve(to: CGPoint(x: w, y: h * 0.55),
-                      control1: CGPoint(x: w * 0.9, y: 0.05),
-                      control2: CGPoint(x: w, y: h * 0.3))
+        // Top right - gentle curve
+        path.addCurve(to: CGPoint(x: w, y: h * 0.5),
+                      control1: CGPoint(x: w * 0.85, y: 0),
+                      control2: CGPoint(x: w, y: h * 0.25))
         
-        // Bottom right curve
-        path.addCurve(to: CGPoint(x: w * 0.55, y: h),
-                      control1: CGPoint(x: w, y: h * 0.8),
+        // Bottom right
+        path.addCurve(to: CGPoint(x: w * 0.5, y: h),
+                      control1: CGPoint(x: w, y: h * 0.75),
                       control2: CGPoint(x: w * 0.85, y: h))
         
-        // Bottom left curve (tuck in)
-        path.addCurve(to: CGPoint(x: 0, y: h * 0.45),
-                      control1: CGPoint(x: w * 0.25, y: h),
+        // Bottom left
+        path.addCurve(to: CGPoint(x: 0, y: h * 0.5),
+                      control1: CGPoint(x: w * 0.15, y: h),
                       control2: CGPoint(x: 0, y: h * 0.75))
         
-        // Top left curve
+        // Top left
+        path.addCurve(to: CGPoint(x: w * 0.5, y: 0),
+                      control1: CGPoint(x: 0, y: h * 0.25),
+                      control2: CGPoint(x: w * 0.15, y: 0))
+        
+        path.closeSubpath()
+        return path
+    }
+}
+
+// MARK: - Blob Shape 2 (Perfect mochi - round)
+struct BlobShape2: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let w = rect.size.width
+        let h = rect.size.height
+        
+        // Start top
+        path.move(to: CGPoint(x: w * 0.5, y: 0))
+        
+        // Top right - very smooth
+        path.addCurve(to: CGPoint(x: w, y: h * 0.5),
+                      control1: CGPoint(x: w * 0.9, y: 0),
+                      control2: CGPoint(x: w, y: h * 0.2))
+        
+        // Bottom right - very smooth
+        path.addCurve(to: CGPoint(x: w * 0.5, y: h),
+                      control1: CGPoint(x: w, y: h * 0.8),
+                      control2: CGPoint(x: w * 0.9, y: h))
+        
+        // Bottom left - very smooth
+        path.addCurve(to: CGPoint(x: 0, y: h * 0.5),
+                      control1: CGPoint(x: w * 0.1, y: h),
+                      control2: CGPoint(x: 0, y: h * 0.8))
+        
+        // Top left - very smooth
         path.addCurve(to: CGPoint(x: w * 0.5, y: 0),
                       control1: CGPoint(x: 0, y: h * 0.2),
-                      control2: CGPoint(x: w * 0.2, y: 0))
+                      control2: CGPoint(x: w * 0.1, y: 0))
+        
+        path.closeSubpath()
+        return path
+    }
+}
+
+// MARK: - Blob Shape 3 (Squished mochi - slightly wider)
+struct BlobShape3: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let w = rect.size.width
+        let h = rect.size.height
+        
+        // Start top
+        path.move(to: CGPoint(x: w * 0.5, y: 0.02))
+        
+        // Top right - wide and gentle
+        path.addCurve(to: CGPoint(x: w * 0.98, y: h * 0.5),
+                      control1: CGPoint(x: w * 0.9, y: 0.05),
+                      control2: CGPoint(x: w * 0.98, y: h * 0.2))
+        
+        // Bottom right - wide and gentle
+        path.addCurve(to: CGPoint(x: w * 0.5, y: h * 0.98),
+                      control1: CGPoint(x: w * 0.98, y: h * 0.8),
+                      control2: CGPoint(x: w * 0.9, y: h * 0.95))
+        
+        // Bottom left - wide and gentle
+        path.addCurve(to: CGPoint(x: w * 0.02, y: h * 0.5),
+                      control1: CGPoint(x: w * 0.1, y: h * 0.95),
+                      control2: CGPoint(x: w * 0.02, y: h * 0.8))
+        
+        // Top left - wide and gentle
+        path.addCurve(to: CGPoint(x: w * 0.5, y: 0.02),
+                      control1: CGPoint(x: w * 0.02, y: h * 0.2),
+                      control2: CGPoint(x: w * 0.1, y: 0.05))
         
         path.closeSubpath()
         return path

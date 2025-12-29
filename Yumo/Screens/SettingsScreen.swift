@@ -14,8 +14,9 @@ struct SettingsScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject var authManager: AuthManager
     @EnvironmentObject var fastingManager: FastingManager
-    @EnvironmentObject var shoppingListVM: ShoppingListViewModel
+
     @EnvironmentObject var superwallManager: SuperwallManager
+    @EnvironmentObject var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
 
     // State
@@ -26,6 +27,11 @@ struct SettingsScreen: View {
     @State private var showSignOutAlert = false
     @State private var showEmailSignUp = false
     @State private var showNameEditSheet = false
+    @State private var showDeleteAccountAlert = false
+    @State private var showFinalDeleteAccountAlert = false
+    @State private var isDeletingAccount = false
+    @State private var showDeleteAccountError = false
+    @State private var deleteAccountErrorMessage = ""
     @State private var editingName: String = ""
 
     @State private var offset1: CGSize = .zero
@@ -118,50 +124,290 @@ struct SettingsScreen: View {
                         .padding(.horizontal, 24)
                         .padding(.top, 60)
 
-                        // MARK: - ACCOUNT SECTION (moved to top)
-                        _buildAccountSection()
-
-                        // MARK: - PROFILE & GOALS
+                        // MARK: - PROFILE & ACCOUNT
                         if let goals {
                             @Bindable var bindableGoals = goals
-
-                            VStack(spacing: 16) {
-
-                                // Edit Profile
-                                NavigationLink {
-                                    ProfileEditView(goals: goals)
-                                } label: {
-                                    HStack {
-                                        Image(systemName: "person.fill")
-                                        Text("Edit My Profile")
-                                        Spacer()
-                                        Image(systemName: "chevron.right")
-                                    }
-                                    .font(.headline)
+                            
+                            VStack(alignment: .leading, spacing: 16) {
+                                Text("Profile & Account")
+                                    .font(.title3).bold()
                                     .foregroundStyle(primaryTextColor)
-                                    .padding()
-                                    .background(FrostedGlassContainer { EmptyView() })
-                                }
-                                .buttonStyle(.plain)
+                                    .padding(.horizontal, 24)
 
-                                // Nutrition Goals
-                                NavigationLink {
-                                    NutritionGoalsView(goals: goals)
-                                } label: {
-                                    HStack {
-                                        Image(systemName: "chart.bar.fill")
-                                        Text("Nutrition Goals")
-                                        Spacer()
-                                        Image(systemName: "chevron.right")
+                                FrostedGlassContainer {
+                                    VStack(spacing: 12) {
+                                        // Account Status
+                                        if let user = authManager.currentUser {
+                                            HStack(spacing: 8) {
+                                                Image(systemName: signInProvider.icon)
+                                                    .font(.headline)
+                                                    .foregroundStyle(primaryTextColor)
+                                                Text("Signed in with \(signInProvider.name)")
+                                                    .font(.headline)
+                                                    .foregroundStyle(primaryTextColor)
+                                            }
+
+                                            Text(user.email ?? "Private Relay Email")
+                                                .font(.subheadline)
+                                                .foregroundStyle(secondaryTextColor)
+
+                                            Button {
+                                                showSignOutAlert = true
+                                            } label: {
+                                                HStack(spacing: 6) {
+                                                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                                                    Text("Sign Out")
+                                                }
+                                                .foregroundColor(.red)
+                                                .padding(.vertical, 8)
+                                                .frame(maxWidth: .infinity)
+                                            }
+                                            .buttonStyle(.plain)
+                                            
+                                            Divider()
+                                                .background(cardBorderColor)
+
+                                        } else {
+                                            Text("Not signed in")
+                                                .font(.headline)
+                                                .foregroundStyle(primaryTextColor)
+
+                                            Text("Sign in to sync your data across devices.")
+                                                .font(.footnote)
+                                                .foregroundStyle(secondaryTextColor)
+                                                .padding(.bottom, 8)
+
+                                            SignInWithAppleButtonView(
+                                                onRequest: { request in
+                                                    print("🍎 [SettingsScreen] Sign in button tapped - onRequest called")
+                                                    authManager.appleSignInNonce = randomNonceString()
+                                                    request.nonce = sha256(authManager.appleSignInNonce)
+                                                    request.requestedScopes = [.fullName, .email]
+                                                    print("🍎 [SettingsScreen] Request configured with nonce and scopes")
+                                                },
+                                                onCompletion: { authorization in
+                                                    print("🍎 [SettingsScreen] onCompletion called - authorization received")
+                                                    Task {
+                                                        await authManager.handleAppleAuthorization(authorization)
+
+                                                        if let user = authManager.currentUser {
+                                                            await authManager.completeSignIn(user: user, modelContext: modelContext)
+                                                        }
+
+                                                        await refreshData()
+                                                        print("🍎 [SettingsScreen] Sign-in flow completed")
+                                                    }
+                                                }
+                                            )
+
+                                            GoogleSignInButtonView(
+                                                onSuccess: { idToken, accessToken, fullName in
+                                                    Task {
+                                                        do {
+                                                            try await authManager.signInWithGoogle(
+                                                                idToken: idToken,
+                                                                accessToken: accessToken,
+                                                                fullName: fullName
+                                                            )
+
+                                                            if let user = authManager.currentUser {
+                                                                await authManager.completeSignIn(user: user, modelContext: modelContext)
+
+                                                                goals.userId = user.id.uuidString.lowercased()
+                                                                try? modelContext.save()
+                                                                await authManager.uploadOnboardingToCloud(goals: goals)
+                                                            }
+
+                                                            await refreshData()
+                                                            print("🔵 [SettingsScreen] Google sign-in completed")
+                                                        } catch {
+                                                            print("🔵 [SettingsScreen] Google sign-in failed: \(error.localizedDescription)")
+                                                        }
+                                                    }
+                                                },
+                                                onError: { error in
+                                                    print("🔵 [SettingsScreen] Google sign-in error: \(error.localizedDescription)")
+                                                }
+                                            )
+                                            
+                                            Button {
+                                                showEmailSignUp = true
+                                            } label: {
+                                                HStack {
+                                                    Image(systemName: "envelope.fill")
+                                                        .font(.system(size: 18))
+                                                    Text("Sign up with Email")
+                                                        .font(.headline)
+                                                }
+                                                .foregroundColor(primaryTextColor)
+                                                .frame(maxWidth: .infinity)
+                                                .frame(height: 50)
+                                                .background(inputBackgroundColor)
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 12)
+                                                        .stroke(cardBorderColor, lineWidth: 1)
+                                                )
+                                                .cornerRadius(12)
+                                            }
+                                            
+                                            Divider()
+                                                .background(cardBorderColor)
+                                        }
+
+                                        // Edit Profile
+                                        NavigationLink {
+                                            ProfileEditView(goals: goals)
+                                        } label: {
+                                            HStack {
+                                                Image(systemName: "person.fill")
+                                                Text("Edit My Profile")
+                                                Spacer()
+                                                Image(systemName: "chevron.right")
+                                            }
+                                            .font(.headline)
+                                            .foregroundStyle(primaryTextColor)
+                                            .padding(.vertical, 8)
+                                        }
+                                        .buttonStyle(.plain)
+
+                                        Divider()
+                                            .background(cardBorderColor)
+
+                                        // Nutrition Goals
+                                        NavigationLink {
+                                            NutritionGoalsView(goals: goals)
+                                        } label: {
+                                            HStack {
+                                                Image(systemName: "chart.bar.fill")
+                                                Text("Nutrition Goals")
+                                                Spacer()
+                                                Image(systemName: "chevron.right")
+                                            }
+                                            .font(.headline)
+                                            .foregroundStyle(primaryTextColor)
+                                            .padding(.vertical, 8)
+                                        }
+                                        .buttonStyle(.plain)
                                     }
-                                    .font(.headline)
-                                    .foregroundStyle(primaryTextColor)
-                                    .padding()
-                                    .background(FrostedGlassContainer { EmptyView() })
                                 }
-                                .buttonStyle(.plain)
+                                .padding(.horizontal, 24)
+                            }
+
+
+                        // MARK: - APPEARANCE & THEME
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("Appearance")
+                                .font(.title3).bold()
+                                .foregroundStyle(primaryTextColor)
+                                .padding(.horizontal, 24)
+
+                            FrostedGlassContainer {
+                                VStack(spacing: 20) {
+                                    // Light/Dark Mode Picker
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        Text("Color Scheme")
+                                            .font(.headline)
+                                            .foregroundStyle(primaryTextColor)
+                                        
+                                        Picker("Appearance", selection: $bindableGoals.appearanceMode) {
+                                            ForEach(AppearanceMode.allCases, id: \.self) { mode in
+                                                Text(mode.rawValue).tag(mode)
+                                            }
+                                        }
+                                        .pickerStyle(.segmented)
+                                        .onChange(of: bindableGoals.appearanceMode) { _, newMode in
+                                            applyAppearanceMode(newMode)
+                                        }
+
+                                        Text("Choose how MochiMeter looks. System follows your device settings.")
+                                            .font(.caption)
+                                            .foregroundStyle(secondaryTextColor)
+                                    }
+                                    
+                                    Divider()
+                                        .background(cardBorderColor)
+                                    
+                                    // Unit System Picker
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        Text("Measurement Units")
+                                            .font(.headline)
+                                            .foregroundStyle(primaryTextColor)
+                                        
+                                        Picker("Units", selection: $bindableGoals.unitSystem) {
+                                            ForEach(UnitSystem.allCases, id: \.self) { system in
+                                                Text(system.displayName).tag(system)
+                                            }
+                                        }
+                                        .pickerStyle(.segmented)
+                                        .onChange(of: bindableGoals.unitSystem) { _, newSystem in
+                                            // Save to SwiftData automatically via @Bindable
+                                            try? modelContext.save()
+                                            print("📏 Unit system changed to: \(newSystem.displayName)")
+                                        }
+
+                                        Text("Choose between \(bindableGoals.unitSystem == .metric ? "kg/cm" : "lbs/ft") for weight and height measurements.")
+                                            .font(.caption)
+                                            .foregroundStyle(secondaryTextColor)
+                                    }
+                                    
+                                    Divider()
+                                        .background(cardBorderColor)
+                                    
+                                    // Energy Unit Picker
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        Text("Energy Units")
+                                            .font(.headline)
+                                            .foregroundStyle(primaryTextColor)
+                                        
+                                        Picker("Energy Units", selection: $bindableGoals.energyUnit) {
+                                            ForEach(EnergyUnit.allCases, id: \.self) { unit in
+                                                Text(unit.rawValue).tag(unit)
+                                            }
+                                        }
+                                        .pickerStyle(.segmented)
+                                        .onChange(of: bindableGoals.energyUnit) { _, newUnit in
+                                            try? modelContext.save()
+                                            print("⚡️ Energy unit changed to: \(newUnit.rawValue)")
+                                        }
+
+                                        Text("Choose between Calories (kcal) and Kilojoules (kJ).")
+                                            .font(.caption)
+                                            .foregroundStyle(secondaryTextColor)
+                                    }
+                                    
+                                    Divider()
+                                        .background(cardBorderColor)
+                                    
+                                    // Mochi Theme Selector
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        Text("Mochi Theme")
+                                            .font(.headline)
+                                            .foregroundStyle(primaryTextColor)
+                                        
+                                        Text("Choose your favorite mochi flavor")
+                                            .font(.caption)
+                                            .foregroundStyle(secondaryTextColor)
+                                        
+                                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                                            ForEach(MochiTheme.allCases, id: \.self) { theme in
+                                                MochiThemeButton(
+                                                    theme: theme,
+                                                    isSelected: themeManager.currentTheme == theme,
+                                                    action: {
+                                                        let haptic = UIImpactFeedbackGenerator(style: .medium)
+                                                        haptic.impactOccurred()
+                                                        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                                                            themeManager.currentTheme = theme
+                                                        }
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
                             .padding(.horizontal, 24)
+                        }
 
                         // MARK: - WIDGETS SHOWCASE
                         VStack(alignment: .leading, spacing: 16) {
@@ -279,36 +525,6 @@ struct SettingsScreen: View {
                             .padding(.horizontal, 24)
                         }
 
-                        // MARK: - APPEARANCE
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("Appearance")
-                                .font(.title3).bold()
-                                .foregroundStyle(primaryTextColor)
-                                .padding(.horizontal, 24)
-
-                            FrostedGlassContainer {
-                                VStack(alignment: .leading, spacing: 16) {
-                                    Text("Theme")
-                                        .font(.headline)
-                                        .foregroundStyle(primaryTextColor)
-
-                                    Picker("Appearance", selection: $bindableGoals.appearanceMode) {
-                                        ForEach(AppearanceMode.allCases, id: \.self) { mode in
-                                            Text(mode.rawValue).tag(mode)
-                                        }
-                                    }
-                                    .pickerStyle(.segmented)
-                                    .onChange(of: bindableGoals.appearanceMode) { _, newMode in
-                                        applyAppearanceMode(newMode)
-                                    }
-
-                                    Text("Choose how MochiMeter looks. System follows your device settings.")
-                                        .font(.caption)
-                                        .foregroundStyle(secondaryTextColor)
-                                }
-                            }
-                            .padding(.horizontal, 24)
-                        }
 
                         // MARK: - NOTIFICATIONS
                         FrostedGlassContainer {
@@ -452,6 +668,22 @@ struct SettingsScreen: View {
                                             icon: "envelope.fill"
                                         )
                                     }
+                                    Divider().background(cardBorderColor)
+
+                                    Link(destination: URL(string: "https://mochimeter.canny.io/feature-requests")!) {
+                                        _buildLinkRow(
+                                            title: "Feature Requests",
+                                            icon: "lightbulb.fill"
+                                        )
+                                    }
+                                    Divider().background(cardBorderColor)
+
+                                    Link(destination: URL(string: "https://mochimeter.canny.io/bug-reports")!) {
+                                        _buildLinkRow(
+                                            title: "Report a Bug",
+                                            icon: "ant.fill"
+                                        )
+                                    }
                                 }
                             }
                             .padding(.horizontal, 24)
@@ -473,21 +705,49 @@ struct SettingsScreen: View {
                                 .font(.title3).bold()
                                 .foregroundStyle(.red)
                                 .padding(.horizontal, 24)
-
-                            Button(role: .destructive) {
-                                showFirstResetAlert = true
-                            } label: {
-                                HStack {
-                                    Image(systemName: "trash.fill")
-                                    Text("Reset App")
-                                        .fontWeight(.semibold)
-                                    Spacer()
+                            
+                            // Delete Account (only for logged-in users)
+                            if authManager.currentUser != nil {
+                                Button(role: .destructive) {
+                                    showDeleteAccountAlert = true
+                                } label: {
+                                    HStack {
+                                        if isDeletingAccount {
+                                            ProgressView()
+                                                .tint(.red)
+                                        } else {
+                                            Image(systemName: "person.crop.circle.badge.xmark")
+                                        }
+                                        Text(isDeletingAccount ? "Deleting Account..." : "Delete Account")
+                                            .fontWeight(.semibold)
+                                        Spacer()
+                                    }
+                                    .foregroundColor(.red)
+                                    .padding()
+                                    .background(.red.opacity(0.1))
+                                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                                    .padding(.horizontal, 24)
                                 }
-                                .foregroundColor(.red)
-                                .padding()
-                                .background(.red.opacity(0.1))
-                                .clipShape(RoundedRectangle(cornerRadius: 14))
-                                .padding(.horizontal, 24)
+                                .disabled(isDeletingAccount)
+                            }
+
+                            // Reset App (only for guest users)
+                            if authManager.currentUser == nil {
+                                Button(role: .destructive) {
+                                    showFirstResetAlert = true
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "trash.fill")
+                                        Text("Reset App")
+                                            .fontWeight(.semibold)
+                                        Spacer()
+                                    }
+                                    .foregroundColor(.red)
+                                    .padding()
+                                    .background(.red.opacity(0.1))
+                                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                                    .padding(.horizontal, 24)
+                                }
                             }
                         }
                         .padding(.bottom, 80)
@@ -531,6 +791,32 @@ struct SettingsScreen: View {
             }
         } message: {
             Text("This action cannot be undone.")
+        }
+        // Delete Account - First confirmation
+        .alert("Delete Account?", isPresented: $showDeleteAccountAlert) {
+            Button("Cancel", role: .cancel) {}
+            Button("Continue", role: .destructive) {
+                showFinalDeleteAccountAlert = true
+            }
+        } message: {
+            Text("This will permanently delete your account and all associated data from our servers. Your local data will also be cleared.")
+        }
+        // Delete Account - Second confirmation
+        .alert("Are you absolutely sure?", isPresented: $showFinalDeleteAccountAlert) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete My Account", role: .destructive) {
+                Task {
+                    await deleteAccount()
+                }
+            }
+        } message: {
+            Text("This action cannot be undone. Your account and all data will be permanently deleted.")
+        }
+        // Delete Account - Error alert
+        .alert("Deletion Failed", isPresented: $showDeleteAccountError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("We couldn't delete your account. Please try again or contact support. Error: \(deleteAccountErrorMessage)")
         }
         // Sign out confirmation
         .alert("Sign Out?", isPresented: $showSignOutAlert) {
@@ -674,7 +960,13 @@ struct SettingsScreen: View {
         }
 
         // 3. Clear shopping list
-        shoppingListVM.items.removeAll()
+        // 3. Clear shopping list
+        let shoppingDescriptor = FetchDescriptor<ShoppingItem>()
+        if let allShopping = try? modelContext.fetch(shoppingDescriptor) {
+            for item in allShopping {
+                modelContext.delete(item)
+            }
+        }
 
         // 4. Stop any active fasting timer
         if fastingManager.timerRunning {
@@ -688,6 +980,106 @@ struct SettingsScreen: View {
         UserDefaults.standard.removeObject(forKey: "hasCompletedOnboarding")
 
         print("🧨 App Fully Reset - User signed out, all data cleared")
+    }
+    
+    // MARK: - Delete Account
+    
+    private func deleteAccount() async {
+        guard authManager.currentUser != nil else { return }
+        
+        isDeletingAccount = true
+        
+        do {
+            // Call the delete-account Edge Function
+            try await authManager.deleteAccount()
+            
+            // Clear local data (similar to reset app but without signing out first)
+            await MainActor.run {
+                // Delete all SwiftData models
+                if let goals = goals {
+                    modelContext.delete(goals)
+                }
+                
+                // Delete all LoggedFood
+                let foodDescriptor = FetchDescriptor<LoggedFood>()
+                if let allFood = try? modelContext.fetch(foodDescriptor) {
+                    for food in allFood {
+                        modelContext.delete(food)
+                    }
+                }
+                
+                // Delete all LoggedWater
+                let waterDescriptor = FetchDescriptor<LoggedWater>()
+                if let allWater = try? modelContext.fetch(waterDescriptor) {
+                    for water in allWater {
+                        modelContext.delete(water)
+                    }
+                }
+                
+                // Delete all LoggedWeight
+                let weightDescriptor = FetchDescriptor<LoggedWeight>()
+                if let allWeight = try? modelContext.fetch(weightDescriptor) {
+                    for weight in allWeight {
+                        modelContext.delete(weight)
+                    }
+                }
+                
+                // Delete all FastingLog
+                let fastingDescriptor = FetchDescriptor<FastingLog>()
+                if let allFasting = try? modelContext.fetch(fastingDescriptor) {
+                    for fasting in allFasting {
+                        modelContext.delete(fasting)
+                    }
+                }
+                
+                // Delete all Recipes
+                let recipeDescriptor = FetchDescriptor<Recipe>()
+                if let allRecipes = try? modelContext.fetch(recipeDescriptor) {
+                    for recipe in allRecipes {
+                        modelContext.delete(recipe)
+                    }
+                }
+                
+                // Delete all SavedFood
+                let savedFoodDescriptor = FetchDescriptor<SavedFood>()
+                if let allSavedFood = try? modelContext.fetch(savedFoodDescriptor) {
+                    for saved in allSavedFood {
+                        modelContext.delete(saved)
+                    }
+                }
+                
+                // Delete all ShoppingItems
+                let shoppingDescriptor = FetchDescriptor<ShoppingItem>()
+                if let allShopping = try? modelContext.fetch(shoppingDescriptor) {
+                    for item in allShopping {
+                        modelContext.delete(item)
+                    }
+                }
+                
+                try? modelContext.save()
+                
+                // Stop any active fasting timer
+                if fastingManager.timerRunning {
+                    fastingManager.endFast()
+                }
+                
+                // Reset onboarding
+                hasCompletedOnboarding = false
+                UserDefaults.standard.removeObject(forKey: "hasCompletedOnboarding")
+                
+                isDeletingAccount = false
+                
+                print("✅ Account deleted successfully")
+            }
+            
+        } catch {
+            await MainActor.run {
+                isDeletingAccount = false
+                deleteAccountErrorMessage = error.localizedDescription
+                showDeleteAccountError = true
+                print("❌ Error deleting account: \(error.localizedDescription)")
+            }
+        }
     }
 
     // MARK: - Notification Helpers
@@ -1327,22 +1719,26 @@ struct ScanWidgetPreview: View {
 struct LockScreenCircularWidgetPreview: View {
     @Environment(\.colorScheme) var colorScheme
     
+    private var widgetColor: Color {
+        colorScheme == .dark ? .white : .black
+    }
+    
     var body: some View {
         ZStack {
             // Background circle (iOS tinted glass effect)
             Circle()
-                .fill(Color.white.opacity(0.15))
+                .fill(widgetColor.opacity(0.15))
             
             // Track ring
             Circle()
-                .stroke(Color.white.opacity(0.3), lineWidth: 5)
+                .stroke(widgetColor.opacity(0.3), lineWidth: 5)
                 .padding(6)
             
             // Progress arc
             Circle()
                 .trim(from: 0, to: 0.65)
                 .stroke(
-                    Color.white,
+                    widgetColor,
                     style: StrokeStyle(lineWidth: 5, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
@@ -1352,13 +1748,21 @@ struct LockScreenCircularWidgetPreview: View {
             VStack(spacing: 0) {
                 Text("735")
                     .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
+                    .foregroundColor(widgetColor)
                 Text("left")
                     .font(.system(size: 7, weight: .medium))
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundColor(widgetColor.opacity(0.7))
             }
         }
         .frame(width: 56, height: 56)
+        .background(
+            Circle()
+                .fill(colorScheme == .dark ? Color.clear : Color.black.opacity(0.05))
+        )
+        .overlay(
+            Circle()
+                .stroke(colorScheme == .dark ? Color.clear : Color.black.opacity(0.1), lineWidth: 1)
+        )
     }
 }
 
@@ -1366,34 +1770,38 @@ struct LockScreenCircularWidgetPreview: View {
 struct LockScreenRectangularWidgetPreview: View {
     @Environment(\.colorScheme) var colorScheme
     
+    private var widgetColor: Color {
+        colorScheme == .dark ? .white : .black
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             // Calories row
             HStack {
                 Text("Calories:")
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(widgetColor)
                 Spacer()
                 Text("1,365 / 2,100")
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(widgetColor)
             }
             
             // Progress bar (monochrome)
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
                     Rectangle()
-                        .fill(Color.white.opacity(0.3))
+                        .fill(widgetColor.opacity(0.3))
                         .frame(height: 3)
                     
                     Rectangle()
-                        .fill(Color.white)
+                        .fill(widgetColor)
                         .frame(width: geometry.size.width * 0.65, height: 3)
                 }
             }
             .frame(height: 3)
             
-            // Macros row (all white, no colors)
+            // Macros row
             HStack(spacing: 10) {
                 lockMacro("C", 45)
                 lockMacro("P", 32)
@@ -1402,18 +1810,26 @@ struct LockScreenRectangularWidgetPreview: View {
         }
         .padding(10)
         .frame(width: 160, height: 56)
-        .background(Color.white.opacity(0.15))
+        .background(widgetColor.opacity(0.15))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(colorScheme == .dark ? Color.clear : Color.black.opacity(0.1), lineWidth: 1)
+        )
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(colorScheme == .dark ? Color.clear : Color.black.opacity(0.05))
+        )
     }
     
     private func lockMacro(_ label: String, _ value: Int) -> some View {
         HStack(spacing: 2) {
             Text(label)
                 .font(.system(size: 9, weight: .bold))
-                .foregroundColor(.white.opacity(0.7))
+                .foregroundColor(widgetColor.opacity(0.7))
             Text("\(value)g")
                 .font(.system(size: 9, weight: .semibold))
-                .foregroundColor(.white)
+                .foregroundColor(widgetColor)
         }
     }
 }
@@ -1422,16 +1838,28 @@ struct LockScreenRectangularWidgetPreview: View {
 struct LockScreenScanWidgetPreview: View {
     @Environment(\.colorScheme) var colorScheme
     
+    private var widgetColor: Color {
+        colorScheme == .dark ? .white : .black
+    }
+    
     var body: some View {
         ZStack {
             Circle()
-                .fill(Color.white.opacity(0.15))
+                .fill(widgetColor.opacity(0.15))
             
             Image(systemName: "barcode.viewfinder")
                 .font(.system(size: 24, weight: .medium))
-                .foregroundColor(.white)
+                .foregroundColor(widgetColor)
         }
         .frame(width: 56, height: 56)
+        .background(
+            Circle()
+                .fill(colorScheme == .dark ? Color.clear : Color.black.opacity(0.05))
+        )
+        .overlay(
+            Circle()
+                .stroke(colorScheme == .dark ? Color.clear : Color.black.opacity(0.1), lineWidth: 1)
+        )
     }
 }
 
@@ -1507,5 +1935,67 @@ private struct VerticalScrollLockView: UIViewRepresentable {
 private extension View {
     func lockVerticalScroll() -> some View {
         modifier(VerticalScrollLockModifier())
+    }
+}
+
+// MARK: - Mochi Theme Button Component
+struct MochiThemeButton: View {
+    let theme: MochiTheme
+    let isSelected: Bool
+    let action: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                ZStack {
+                    // Gradient preview circle
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: theme.buttonGradient,
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 56, height: 56)
+                        .overlay(
+                            Circle()
+                                .stroke(isSelected ? Color.white : Color.clear, lineWidth: 3)
+                        )
+                        .shadow(color: theme.primaryColor.opacity(0.3), radius: 8, y: 4)
+                    
+                    // Emoji
+                    Text(theme.icon)
+                        .font(.title)
+                    
+                    // Checkmark for selected state
+                    if isSelected {
+                        VStack {
+                            HStack {
+                                Spacer()
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.title3)
+                                    .foregroundStyle(.white)
+                                    .background(
+                                        Circle()
+                                            .fill(theme.primaryColor)
+                                            .frame(width: 24, height: 24)
+                                    )
+                                    .offset(x: 8, y: -8)
+                            }
+                            Spacer()
+                        }
+                    }
+                }
+                
+                Text(theme.displayName)
+                    .font(.caption.weight(isSelected ? .semibold : .regular))
+                    .foregroundStyle(isSelected ? theme.primaryColor : (colorScheme == .dark ? .white.opacity(0.7) : .black.opacity(0.6)))
+            }
+            .scaleEffect(isSelected ? 1.05 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
+        }
+        .buttonStyle(.plain)
     }
 }

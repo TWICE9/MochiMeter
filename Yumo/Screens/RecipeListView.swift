@@ -157,7 +157,7 @@ struct RecipeListView: View {
             VStack(alignment: .trailing, spacing: 2) {
                 Text("\(recipe.caloriesPerServing, specifier: "%.0f") kcal")
                     .font(.callout).bold()
-                    .foregroundStyle(Color("AppSecondaryAccent"))
+                    .foregroundStyle(colorScheme == .light ? Color(red: 0.4, green: 0.4, blue: 0.4) : Color("AppSecondaryAccent"))
 
                 Text("per serving")
                     .font(.caption2)

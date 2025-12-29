@@ -17,6 +17,7 @@ enum HomeDestination: Hashable {
     case shoppingList
     case reports
     case fasting
+    case savedFoods
     case community
     case challenges
 }

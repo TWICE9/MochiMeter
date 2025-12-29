@@ -12,6 +12,16 @@ struct RecipeDetailView: View {
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject var tabRouter: TabRouter
     
+    @Query private var userGoals: [UserGoals]
+    
+    private var energyUnit: EnergyUnit {
+        userGoals.first?.energyUnit ?? .calories
+    }
+    
+    private func convertEnergy(_ kcal: Double) -> Double {
+        energyUnit == .kilojoules ? kcal * 4.184 : kcal
+    }
+    
     @State private var gettingReadyToEdit = false
     @State private var showingEditSheet = false
     @State private var showingDeleteAlert = false
@@ -65,7 +75,7 @@ struct RecipeDetailView: View {
                             .padding(.horizontal, 4)
                         
                         HStack(spacing: 12) {
-                            _buildMacroCard(title: "Calories", value: "\(Int(recipe.caloriesPerServing))", unit: "kcal", color: Color("AppSecondaryAccent"))
+                            _buildMacroCard(title: "Calories", value: "\(Int(convertEnergy(recipe.caloriesPerServing))) \(energyUnit.unitLabel)", unit: energyUnit.unitLabel, color: Color("AppSecondaryAccent"))
                             _buildMacroCard(title: "Protein", value: String(format: "%.1fg", recipe.proteinPerServing), unit: "Protein", color: .blue)
                             _buildMacroCard(title: "Carbs", value: String(format: "%.1fg", recipe.carbsPerServing), unit: "Carbs", color: .green)
                             _buildMacroCard(title: "Fat", value: String(format: "%.1fg", recipe.fatPerServing), unit: "Fat", color: .orange)
@@ -96,7 +106,7 @@ struct RecipeDetailView: View {
                                         Spacer()
                                         
                                         VStack(alignment: .trailing, spacing: 2) {
-                                            Text("\(Int(ingredient.totalCalories)) kcal")
+                                            Text("\(Int(convertEnergy(ingredient.totalCalories))) \(energyUnit.unitLabel)")
                                                 .font(.callout).fontWeight(.semibold)
                                                 .foregroundStyle(adaptiveTextColor)
                                         }
@@ -245,11 +255,11 @@ struct RecipeDetailView: View {
                 .font(.title3).bold()
                 .foregroundStyle(color)
             
-            if unit != "kcal" {
+            if unit != "kcal" && unit != "kJ" {
                 Text(unit)
                     .font(.caption2)
                     .foregroundStyle(adaptiveSecondaryTextColor)
-                    .opacity(0) // Hidden but keeps spacing if needed, or remove
+                    .opacity(0)
                     .frame(height: 0)
             }
         }

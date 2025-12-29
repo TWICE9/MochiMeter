@@ -15,6 +15,18 @@ struct CreateRecipeView: View {
     private let apiService = OpenFoodFactsService()
     @Query private var allCommonFoods: [CommonFood]
 
+    @EnvironmentObject var themeManager: ThemeManager
+    
+    @Query private var userGoals: [UserGoals]
+    
+    private var energyUnit: EnergyUnit {
+        userGoals.first?.energyUnit ?? .calories
+    }
+    
+    private func convertEnergy(_ kcal: Double) -> Double {
+        userGoals.first?.energyUnit == .kilojoules ? kcal * 4.184 : kcal
+    }
+
     // --- Recipe State ---
     @State private var recipeName: String = ""
     @State private var recipeServings: Int = 4
@@ -81,7 +93,7 @@ struct CreateRecipeView: View {
         colorScheme == .light ? Color.black.opacity(0.04) : Color.white.opacity(0.1)
     }
     private var accentColor: Color {
-        colorScheme == .light ? Color(red: 0.2, green: 0.5, blue: 0.9) : Color("AppSecondaryAccent")
+        colorScheme == .dark ? themeManager.currentTheme.darkPrimaryColor : themeManager.currentTheme.primaryColor
     }
 
     // MARK: - Computed Totals
@@ -229,11 +241,11 @@ struct CreateRecipeView: View {
                                         .font(.headline)
                                         .foregroundStyle(primaryText)
                                     Spacer()
-                                    Text("\(Int(caloriesPerServing))")
+                                    Text("\(Int(convertEnergy(caloriesPerServing)))")
                                         .font(.title2)
                                         .fontWeight(.bold)
                                         .foregroundStyle(accentColor)
-                                    Text("kcal")
+                                    Text(energyUnit.unitLabel)
                                         .font(.subheadline)
                                         .foregroundStyle(secondaryText)
                                 }
@@ -249,7 +261,7 @@ struct CreateRecipeView: View {
 
                                 // Total recipe info
                                 HStack {
-                                    Text("Total recipe: \(Int(totalCalories)) kcal")
+                                    Text("Total recipe: \(Int(convertEnergy(totalCalories))) \(energyUnit.unitLabel)")
                                         .font(.caption)
                                         .foregroundStyle(secondaryText)
                                     Spacer()
@@ -279,7 +291,7 @@ struct CreateRecipeView: View {
                     }
                     .disabled(!canSave)
                     .padding(.horizontal, 24)
-                    .padding(.bottom, 24)
+                    .padding(.bottom, 84)
                 }
             }
             .scrollContentBackground(.hidden)
@@ -372,8 +384,8 @@ struct CreateRecipeView: View {
             }
 
             Spacer()
-
-            Text("\(Int(ingredient.totalCalories)) kcal")
+            
+            Text("\(Int(convertEnergy(ingredient.totalCalories))) \(energyUnit.unitLabel)")
                 .font(.subheadline)
                 .fontWeight(.semibold)
                 .foregroundStyle(accentColor)
@@ -456,6 +468,7 @@ struct CreateRecipeView: View {
             for ingredient in addedIngredients {
                 let loggedFood = LoggedFood(
                     name: ingredient.name,
+                    timestamp: Date(timeIntervalSince1970: 0), // Far past date so ingredients don't appear in daily logs
                     servingSizeDescription: ingredient.servingDescription,
                     servingAmount: ingredient.amount,
                     caloriesPerServing: ingredient.caloriesPerServing,
@@ -520,6 +533,18 @@ struct IngredientSearchSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var allCommonFoods: [CommonFood]
 
+    @EnvironmentObject var themeManager: ThemeManager
+    
+    @Query private var userGoals: [UserGoals]
+    
+    private var energyUnit: EnergyUnit {
+        userGoals.first?.energyUnit ?? .calories
+    }
+    
+    private func convertEnergy(_ kcal: Double) -> Double {
+        userGoals.first?.energyUnit == .kilojoules ? kcal * 4.184 : kcal
+    }
+
     let onSelect: (CreateRecipeView.IngredientToAdd) -> Void
 
     @State private var searchText = ""
@@ -530,6 +555,7 @@ struct IngredientSearchSheet: View {
     @State private var isAICreating = false
     @State private var searchTask: Task<Void, Error>?
     @State private var aiError: String?
+    @FocusState private var isSearchFocused: Bool
 
     private let apiService = OpenFoodFactsService()
     private let supabaseService = SupabaseService()
@@ -544,7 +570,7 @@ struct IngredientSearchSheet: View {
         colorScheme == .light ? Color.white : Color.white.opacity(0.08)
     }
     private var accentColor: Color {
-        colorScheme == .light ? Color(red: 0.2, green: 0.5, blue: 0.9) : Color("AppSecondaryAccent")
+        colorScheme == .dark ? themeManager.currentTheme.darkPrimaryColor : themeManager.currentTheme.primaryColor
     }
     private var aiGradient: LinearGradient {
         LinearGradient(
@@ -571,6 +597,7 @@ struct IngredientSearchSheet: View {
                     TextField("Search ingredients...", text: $searchText)
                         .foregroundStyle(primaryText)
                         .autocorrectionDisabled()
+                        .focused($isSearchFocused)
 
                     if !searchText.isEmpty {
                         Button {
@@ -769,6 +796,12 @@ struct IngredientSearchSheet: View {
         .onChange(of: searchText) { _, newValue in
             handleSearch(for: newValue)
         }
+        .onAppear {
+            // Auto-focus search bar when sheet opens
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                isSearchFocused = true
+            }
+        }
     }
 
     @ViewBuilder
@@ -786,7 +819,7 @@ struct IngredientSearchSheet: View {
                         .foregroundStyle(secondaryText)
                 }
                 Spacer()
-                Text("\(Int(calories)) kcal")
+                Text("\(Int(convertEnergy(calories))) \(energyUnit.unitLabel)")
                     .font(.subheadline)
                     .fontWeight(.semibold)
                     .foregroundStyle(accentColor)
@@ -810,7 +843,7 @@ struct IngredientSearchSheet: View {
             return
         }
 
-        // Immediately filter local foods (instant)
+        // Immediately filter local foods (instant) - includes previously cached cloud foods
         commonFoodResults = allCommonFoods.filter {
             $0.name.lowercased().contains(term.lowercased())
         }
@@ -821,39 +854,127 @@ struct IngredientSearchSheet: View {
         }
 
         searchTask = Task {
-            // Short debounce (200ms)
-            try await Task.sleep(nanoseconds: 200_000_000)
+            // Longer debounce (500ms) to avoid too many requests while typing
+            try await Task.sleep(nanoseconds: 500_000_000)
 
-            // Launch both searches independently - results appear as they arrive
-            Task {
-                do {
-                    let cloudFoods = try await supabaseService.searchFoodsByName(term, limit: 10)
-                    await MainActor.run {
-                        cloudFoodResults = cloudFoods
-                        // Hide loading if we got cloud results
-                        if !cloudFoods.isEmpty { isLoading = false }
+            // Use task group for better concurrency control
+            await withTaskGroup(of: Void.self) { group in
+                // Cloud search with timeout - also cache results locally
+                group.addTask {
+                    do {
+                        let cloudFoods = try await withTimeout(seconds: 5) {
+                            try await self.supabaseService.searchFoodsByName(term, limit: 10)
+                        }
+                        await MainActor.run {
+                            self.cloudFoodResults = cloudFoods
+                            if !cloudFoods.isEmpty { self.isLoading = false }
+                            
+                            // Cache cloud results as CommonFood for instant future searches
+                            self.cacheCloudFoods(cloudFoods)
+                        }
+                    } catch {
+                        await MainActor.run { 
+                            self.cloudFoodResults = []
+                            #if DEBUG
+                            print("Cloud search error: \(error)")
+                            #endif
+                        }
                     }
-                } catch {
-                    await MainActor.run { cloudFoodResults = [] }
                 }
-            }
 
-            Task {
-                do {
-                    let products = try await apiService.searchFoodByName(term, page: 1)
-                    await MainActor.run {
-                        apiSearchResults = products
-                        isLoading = false
+                // API search with timeout
+                group.addTask {
+                    do {
+                        let products = try await withTimeout(seconds: 5) {
+                            try await self.apiService.searchFoodByName(term, page: 1)
+                        }
+                        await MainActor.run {
+                            self.apiSearchResults = products
+                            self.isLoading = false
+                        }
+                    } catch {
+                        await MainActor.run {
+                            self.apiSearchResults = []
+                            #if DEBUG
+                            print("API search error: \(error)")
+                            #endif
+                        }
                     }
-                } catch {
-                    await MainActor.run {
-                        apiSearchResults = []
-                        isLoading = false
-                    }
+                }
+                
+                // Wait for both searches to complete
+                await group.waitForAll()
+                
+                // Ensure loading is turned off after both complete
+                await MainActor.run {
+                    self.isLoading = false
                 }
             }
         }
     }
+    
+    // Cache cloud foods locally for instant future searches
+    private func cacheCloudFoods(_ cloudFoods: [MasterFoodRow]) {
+        for cloudFood in cloudFoods {
+            // Skip invalid entries (0 or negative calories)
+            guard cloudFood.calories > 0 else {
+                #if DEBUG
+                print("⚠️ Skipping invalid food entry: \(cloudFood.foodName) (0 calories)")
+                #endif
+                continue
+            }
+            
+            // Capture name as constant for predicate
+            let foodName = cloudFood.foodName
+            
+            // Check if already exists
+            let existsPredicate = #Predicate<CommonFood> { food in
+                food.name == foodName
+            }
+            
+            let descriptor = FetchDescriptor(predicate: existsPredicate)
+            if (try? modelContext.fetchCount(descriptor)) ?? 0 > 0 {
+                // Already cached, skip
+                continue
+            }
+            
+            // Create new CommonFood entry
+            let newCommonFood = CommonFood(
+                name: cloudFood.foodName,
+                caloriesPerServing: cloudFood.calories,
+                proteinPerServing: cloudFood.protein,
+                carbsPerServing: cloudFood.carbs,
+                fatPerServing: cloudFood.fat,
+                fiberPerServing: cloudFood.fiber,
+                sugarPerServing: cloudFood.sugar,
+                servingSizeDescription: "1 serving (100g)"
+            )
+            
+            modelContext.insert(newCommonFood)
+        }
+        
+        try? modelContext.save()
+    }
+    
+    // Helper function for timeout
+    private func withTimeout<T>(seconds: Double, operation: @escaping () async throws -> T) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                try await operation()
+            }
+            
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw TimeoutError()
+            }
+            
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
+    }
+    
+    struct TimeoutError: Error {}
 
     private func createWithAI() async {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -917,6 +1038,7 @@ struct IngredientSearchSheet: View {
 
 struct AddIngredientSheet: View {
     @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject var themeManager: ThemeManager
 
     let ingredient: CreateRecipeView.IngredientToAdd
     let onAdd: (CreateRecipeView.RecipeIngredient) -> Void
@@ -931,7 +1053,7 @@ struct AddIngredientSheet: View {
         colorScheme == .light ? Color(red: 120/255, green: 120/255, blue: 130/255) : .white.opacity(0.7)
     }
     private var accentColor: Color {
-        colorScheme == .light ? Color(red: 0.2, green: 0.5, blue: 0.9) : Color("AppSecondaryAccent")
+        colorScheme == .dark ? themeManager.currentTheme.darkPrimaryColor : themeManager.currentTheme.primaryColor
     }
 
     private var totalCalories: Double { ingredient.caloriesPerServing * amount }
@@ -1041,6 +1163,7 @@ struct AddIngredientSheet: View {
 
 struct EditIngredientSheet: View {
     @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject var themeManager: ThemeManager
 
     let ingredient: CreateRecipeView.RecipeIngredient
     let onSave: (CreateRecipeView.RecipeIngredient) -> Void
@@ -1062,7 +1185,7 @@ struct EditIngredientSheet: View {
         colorScheme == .light ? Color(red: 120/255, green: 120/255, blue: 130/255) : .white.opacity(0.7)
     }
     private var accentColor: Color {
-        colorScheme == .light ? Color(red: 0.2, green: 0.5, blue: 0.9) : Color("AppSecondaryAccent")
+        colorScheme == .dark ? themeManager.currentTheme.darkPrimaryColor : themeManager.currentTheme.primaryColor
     }
 
     private var totalCalories: Double { ingredient.caloriesPerServing * amount }

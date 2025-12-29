@@ -27,10 +27,12 @@ struct WelcomePage: View {
             VStack(spacing: 30) {
                 Spacer()
 
-                Text("Welcome to MochiMeter")
-                    .font(.system(size: 44, weight: .bold))
-                    .foregroundStyle(primaryText)
-                    .multilineTextAlignment(.center)
+                Image(colorScheme == .dark ? "LogoDarkMode" : "LogoHS")
+                    .renderingMode(.original)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: 280, maxHeight: 120)
+                    .padding(.bottom, 10)
 
                 Text("Your personal health and nutrition tracker")
                     .font(.title3)

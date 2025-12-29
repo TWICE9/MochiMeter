@@ -1,22 +1,26 @@
 //
-//  for.swift
+//  ShoppingItem.swift
 //  Yumo
 //
 //  Created by Apple on 15/11/2025.
 //
 
-
 import Foundation
+import SwiftData
 
-// A simple, identifiable struct for our list items
-struct ShoppingItem: Identifiable, Codable {
-    let id: UUID
+@Model
+final class ShoppingItem {
+    @Attribute(.unique) var id: UUID
+    var userId: String? // Optional to support guest functionality if needed
     var name: String
     var isCompleted: Bool
-
-    init(id: UUID = UUID(), name: String, isCompleted: Bool = false) {
+    var createdAt: Date
+    
+    init(id: UUID = UUID(), userId: String? = nil, name: String, isCompleted: Bool = false, createdAt: Date = Date()) {
         self.id = id
+        self.userId = userId
         self.name = name
         self.isCompleted = isCompleted
+        self.createdAt = createdAt
     }
 }
