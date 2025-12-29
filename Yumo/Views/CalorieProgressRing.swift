@@ -13,15 +13,25 @@ import SwiftUI
 struct CalorieProgressRing: View {
     let current: Double
     let goal: Double
+    @EnvironmentObject var themeManager: ThemeManager
+    @Environment(\.colorScheme) var colorScheme
     
     // Calculate the percentage completion (clamped between 0 and 1)
     private var progress: Double {
         min(current / goal, 1.0)
     }
     
-    // Determine the color based on whether the goal is exceeded
-    private var progressColor: Color {
-        progress >= 1.0 ? .red : Color("AppSecondaryAccent") // Cyan
+    // Determine the gradient based on whether the goal is exceeded
+    private var progressGradient: LinearGradient {
+        let colors = current > goal 
+            ? themeManager.currentTheme.overageGradient(for: colorScheme)
+            : themeManager.currentTheme.wheelGradient(for: colorScheme)
+            
+        return LinearGradient(
+            gradient: Gradient(colors: colors),
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
     
     var body: some View {
@@ -34,11 +44,11 @@ struct CalorieProgressRing: View {
                         lineWidth: 18
                     )
                 
-                // Progress Ring (Cyan/Red)
+                // Progress Ring
                 Circle()
                     .trim(from: 0.0, to: progress)
                     .stroke(
-                        progressColor.opacity(0.8),
+                        progressGradient,
                         style: StrokeStyle(lineWidth: 18, lineCap: .round)
                     )
                     // Start at the top (12 o'clock)

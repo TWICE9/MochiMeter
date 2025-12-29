@@ -14,16 +14,16 @@ class AdManager: NSObject, ObservableObject {
     @Published var isAdEnabled: Bool = true
     
     // MARK: - Ad Unit IDs
-    // NOTE: Replace these with your actual Ad Unit IDs from AdMob dashboard
-    #if DEBUG
-    // Test IDs for development
-    static let bannerAdUnitID = "ca-app-pub-3940256099942544/2934735716" // Test Banner
-    static let reportsBannerAdUnitID = "ca-app-pub-3940256099942544/2934735716" // Test Banner
-    static let interstitialAdUnitID = "ca-app-pub-3940256099942544/4411468910" // Test Interstitial
-    #else
-    // Production IDs - REPLACE THESE WITH YOUR ACTUAL IDs
+    // NOTE: Using production IDs as requested. 
+    // WARNING: Be careful not to generate invalid clicks during testing.
+    
     static let bannerAdUnitID = "ca-app-pub-1465033379713828/3633193401"
     static let reportsBannerAdUnitID = "ca-app-pub-1465033379713828/9647937415"
+    
+    #if DEBUG
+    // Keeping test ID for interstitial in debug since no interstitial ID was provided
+    static let interstitialAdUnitID = "ca-app-pub-3940256099942544/4411468910"
+    #else
     static let interstitialAdUnitID = "YOUR_INTERSTITIAL_AD_UNIT_ID"
     #endif
     
