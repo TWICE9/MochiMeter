@@ -51,8 +51,23 @@ actor AIFoodScanner {
         guard !trimmed.isEmpty else {
             throw FoodScanError.invalidRequest
         }
+        
+        // Get user's general location context (Country) for more accurate regional food data
+        // We use Locale to avoid demanding location permissions/tracking
+        let countryCode: String
+        if #available(iOS 16, *) {
+            countryCode = Locale.current.region?.identifier ?? "US"
+        } else {
+            countryCode = Locale.current.regionCode ?? "US"
+        }
+        
+        let countryName = Locale.current.localizedString(forRegionCode: countryCode) ?? "United States"
+        
+        // Append location context to the description so the AI knows which regional menu to use
+        // e.g. "KFC Zinger Box" -> "KFC Zinger Box (Location Context: Australia)"
+        let descriptionWithContext = "\(trimmed) (Location Context: \(countryName))"
 
-        let requestBody: [String: Any] = ["description": trimmed]
+        let requestBody: [String: Any] = ["description": descriptionWithContext]
         guard let jsonData = try? JSONSerialization.data(withJSONObject: requestBody) else {
             throw FoodScanError.invalidRequest
         }
