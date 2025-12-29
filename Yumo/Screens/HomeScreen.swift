@@ -488,11 +488,7 @@ struct HomeScreen: View {
                     .trim(from: 0, to: overflowProgress)
                     .stroke(
                         AngularGradient(
-                            gradient: Gradient(colors: [
-                                colorScheme == .light ? Color(red: 0.3, green: 0.7, blue: 0.4) : Color("AppSecondaryAccent"),
-                                Color.orange,
-                                Color.red
-                            ]),
+                            gradient: Gradient(colors: themeManager.currentTheme.overflowRingGradient(for: colorScheme)),
                             center: .center,
                             startAngle: .degrees(0),
                             endAngle: .degrees(360 * max(overflowProgress, 0.01))

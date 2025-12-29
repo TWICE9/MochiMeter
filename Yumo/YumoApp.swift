@@ -8,6 +8,7 @@ import UserNotifications
 import Combine
 import GoogleSignIn
 import Auth
+import AppTrackingTransparency
 
 // MARK: - Deep Link Manager
 @MainActor
@@ -59,6 +60,14 @@ class AppNotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotificati
                 print("🔔 Notification permission granted.")
             } else if let error = error {
                 print("⚠️ Notification permission error:", error.localizedDescription)
+            }
+        }
+        
+        // Request App Tracking Transparency for AdMob
+        // We delay slightly to not conflict with other launch alerts
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            ATTrackingManager.requestTrackingAuthorization { status in
+                print("🆔 Tracking auth status: \(status.rawValue)")
             }
         }
 

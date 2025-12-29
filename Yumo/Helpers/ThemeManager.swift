@@ -106,7 +106,7 @@ enum MochiTheme: String, CaseIterable, Codable {
         }
     }
     
-    // Gradient for when calorie goal is exceeded (blends with theme + red)
+    // Gradient for when calorie goal is exceeded (linear, replacing the main ring)
     func overageGradient(for colorScheme: ColorScheme) -> [Color] {
         let baseRed = Color(red: 1.0, green: 0.3, blue: 0.3) // Bright red
         let darkRed = Color(red: 0.8, green: 0.2, blue: 0.2) // Darker red for depth
@@ -114,6 +114,13 @@ enum MochiTheme: String, CaseIterable, Codable {
         let themeColor = colorScheme == .light ? primaryColor : darkPrimaryColor
         
         return [baseRed, themeColor.opacity(0.5), darkRed]
+    }
+    
+    // Gradient for the overflow ring on HomeScreen (Angular, overlaying the main ring)
+    // Starts with the theme's secondary color to blend seamlessly with the 12 o'clock position
+    func overflowRingGradient(for colorScheme: ColorScheme) -> [Color] {
+        let startColor = colorScheme == .light ? secondaryColor : darkSecondaryColor
+        return [startColor, Color.orange, Color.red]
     }
     
     // Legacy non-adaptive properties (deprecated but kept for compatibility)

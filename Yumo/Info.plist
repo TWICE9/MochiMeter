@@ -35,5 +35,11 @@
 			<string>cstr6suwn9.skadnetwork</string>
 		</dict>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>MochiMeter needs camera access to scan food and barcodes.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>MochiMeter needs photo library access to analyze food from your saved photos.</string>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>This identifier will be used to deliver personalized ads to you.</string>
 </dict>
 </plist>

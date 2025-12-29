@@ -33,21 +33,21 @@ struct AdBannerView: UIViewRepresentable {
         return windowScene?.windows.first?.rootViewController
     }
     
-    class Coordinator: NSObject, GADBannerViewDelegate {
+    class Coordinator: NSObject, BannerViewDelegate {
         var parent: AdBannerView
         
         init(_ parent: AdBannerView) {
             self.parent = parent
         }
         
-        func bannerViewDidReceiveAd(_ bannerView: GADBannerView) {
+        func bannerViewDidReceiveAd(_ bannerView: BannerView) {
             print("🟢 AdMob Banner Loaded")
             withAnimation {
                 parent.isAdLoaded = true
             }
         }
         
-        func bannerView(_ bannerView: GADBannerView, didFailToReceiveAdWithError error: Error) {
+        func bannerView(_ bannerView: BannerView, didFailToReceiveAdWithError error: Error) {
             print("🔴 AdMob Banner Failed: \(error.localizedDescription)")
             withAnimation {
                 parent.isAdLoaded = false
