@@ -88,6 +88,22 @@ enum MochiTheme: String, CaseIterable, Codable {
         }
     }
     
+    // Complementary color (opposite on color wheel) for background orbs
+    var complementaryColor: Color {
+        switch self {
+        case .matcha: // Green -> Pink/Rose
+            return Color(red: 1.0, green: 0.6, blue: 0.7)
+        case .strawberry: // Pink -> Minty Green
+            return Color(red: 0.5, green: 0.9, blue: 0.7)
+        case .taro: // Purple -> Yellow/Gold
+            return Color(red: 1.0, green: 0.9, blue: 0.5)
+        case .mango: // Yellow/Orange -> Periwinkle Blue
+            return Color(red: 0.6, green: 0.7, blue: 1.0)
+        case .blueberry: // Blue -> Peach/Orange
+            return Color(red: 1.0, green: 0.7, blue: 0.5)
+        }
+    }
+
     // Gradient for main calorie wheel (adaptive)
     func wheelGradient(for colorScheme: ColorScheme) -> [Color] {
         if colorScheme == .light {

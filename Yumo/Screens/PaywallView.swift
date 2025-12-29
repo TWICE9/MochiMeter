@@ -35,6 +35,8 @@ enum SubscriptionPlan: String {
 
 struct PaywallView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject private var themeManager: ThemeManager
     @State private var selectedPlan: SubscriptionPlan = .monthly
     @State private var offset1: CGSize = .zero
     @State private var offset2: CGSize = .zero
@@ -329,8 +331,14 @@ struct PaywallView: View {
     @ViewBuilder
     private func _buildDynamicBackground() -> some View {
         ZStack {
+            // Orb 1: Primary Theme Color (Top Left)
             RadialGradient(
-                gradient: Gradient(colors: [Color("AppSecondaryAccent").opacity(0.3), .clear]),
+                gradient: Gradient(colors: [
+                    colorScheme == .light 
+                        ? themeManager.currentTheme.primaryColor.opacity(0.4) 
+                        : themeManager.currentTheme.darkPrimaryColor.opacity(0.2),
+                    .clear
+                ]),
                 center: .topLeading,
                 startRadius: 50,
                 endRadius: 450
@@ -339,8 +347,12 @@ struct PaywallView: View {
             .offset(x: -150, y: -150)
             .ignoresSafeArea()
 
+            // Orb 2: Complementary Color (Bottom Right)
             RadialGradient(
-                gradient: Gradient(colors: [Color("AppPrimaryAccent").opacity(0.4), .clear]),
+                gradient: Gradient(colors: [
+                    themeManager.currentTheme.complementaryColor.opacity(colorScheme == .light ? 0.35 : 0.2),
+                    .clear
+                ]),
                 center: .bottomTrailing,
                 startRadius: 100,
                 endRadius: 500

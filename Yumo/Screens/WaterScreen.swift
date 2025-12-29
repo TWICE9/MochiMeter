@@ -9,11 +9,17 @@ struct WaterScreen: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject var themeManager: ThemeManager
 
     // MARK: - Local State
 
     @State private var waterLogsToday: [LoggedWater] = []
     @State private var goals: UserGoals = UserGoals()
+    
+    // Animation State
+    @State private var offset1: CGSize = .zero
+    @State private var offset2: CGSize = .zero
 
     // MARK: - Computed Properties
     
@@ -145,8 +151,8 @@ struct WaterScreen: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(Color("AppTextPrimary").opacity(0.6))
+                        .font(.title2)
+                        .foregroundStyle(Color("AppTextPrimary").opacity(0.6))
                     }
                 }
                 ToolbarItem(placement: .principal) {
@@ -164,6 +170,9 @@ struct WaterScreen: View {
                 if newPhase == .active {
                     Task { await refreshData() }
                 }
+            }
+            .onAppear {
+                animateOrbs()
             }
         }
     }
@@ -227,11 +236,45 @@ struct WaterScreen: View {
     @ViewBuilder
     private func _buildDynamicBackground() -> some View {
         ZStack {
-            RadialGradient(gradient: Gradient(colors: [Color("AppSecondaryAccent").opacity(0.3), .clear]), center: .topLeading, startRadius: 50, endRadius: 450)
-                .offset(x: -150, y: -150).ignoresSafeArea()
-            RadialGradient(gradient: Gradient(colors: [Color("AppPrimaryAccent").opacity(0.4), .clear]), center: .bottomTrailing, startRadius: 100, endRadius: 500)
-                .offset(x: 100, y: 150).ignoresSafeArea()
+            // Orb 1: Primary Theme Color (Top Left)
+            RadialGradient(
+                gradient: Gradient(colors: [
+                    colorScheme == .light 
+                        ? themeManager.currentTheme.primaryColor.opacity(0.4) 
+                        : themeManager.currentTheme.darkPrimaryColor.opacity(0.25),
+                    .clear
+                ]),
+                center: .topLeading,
+                startRadius: 50,
+                endRadius: 450
+            )
+            .offset(offset1)
+            .offset(x: -150, y: -150)
+            .ignoresSafeArea()
+
+            // Orb 2: Complementary Color (Bottom Right)
+            RadialGradient(
+                gradient: Gradient(colors: [
+                    themeManager.currentTheme.complementaryColor.opacity(colorScheme == .light ? 0.35 : 0.25),
+                    .clear
+                ]),
+                center: .bottomTrailing,
+                startRadius: 100,
+                endRadius: 500
+            )
+            .offset(offset2)
+            .offset(x: 100, y: 150)
+            .ignoresSafeArea()
         }
         .blur(radius: 60)
+    }
+
+    private func animateOrbs() {
+        withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
+            offset1 = CGSize(width: 80, height: 60)
+        }
+        withAnimation(.easeInOut(duration: 10).repeatForever(autoreverses: true)) {
+            offset2 = CGSize(width: -100, height: -70)
+        }
     }
 }

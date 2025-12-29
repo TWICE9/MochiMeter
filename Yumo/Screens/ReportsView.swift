@@ -284,6 +284,7 @@ struct ReportsView: View {
             }
         }
         .onAppear {
+            animateOrbs()
             Task { await refreshData() }
             requestHealthKitPermissionIfNeeded()
         }
@@ -1409,63 +1410,37 @@ struct ReportsView: View {
         ZStack {
             backgroundColor.ignoresSafeArea()
 
-            if colorScheme == .light {
-                RadialGradient(
-                    gradient: Gradient(colors: [
-                        secondaryAccent.opacity(0.15),
-                        .clear
-                    ]),
-                    center: .topLeading,
-                    startRadius: 50,
-                    endRadius: 450
-                )
-                .offset(offset1)
-                .offset(x: -150, y: -150)
-                .ignoresSafeArea()
+            // Orb 1: Primary Theme Color (Top Left)
+            RadialGradient(
+                gradient: Gradient(colors: [
+                    colorScheme == .light 
+                        ? themeManager.currentTheme.primaryColor.opacity(0.4) 
+                        : themeManager.currentTheme.darkPrimaryColor.opacity(0.2),
+                    .clear
+                ]),
+                center: .topLeading,
+                startRadius: 50,
+                endRadius: 450
+            )
+            .offset(offset1)
+            .offset(x: -150, y: -150)
+            .ignoresSafeArea()
 
-                RadialGradient(
-                    gradient: Gradient(colors: [
-                        primaryAccent.opacity(0.12),
-                        .clear
-                    ]),
-                    center: .bottomTrailing,
-                    startRadius: 100,
-                    endRadius: 500
-                )
-                .offset(offset2)
-                .offset(x: 100, y: 150)
-                .ignoresSafeArea()
-            } else {
-                // Dark Mode: Subtle white "spotlight" effects
-                RadialGradient(
-                    gradient: Gradient(colors: [
-                        Color.white.opacity(0.08),
-                        .clear
-                    ]),
-                    center: .topLeading,
-                    startRadius: 50,
-                    endRadius: 500
-                )
-                .offset(offset1)
-                .offset(x: -100, y: -100)
-                .ignoresSafeArea()
-
-                RadialGradient(
-                    gradient: Gradient(colors: [
-                        Color.white.opacity(0.05),
-                        .clear
-                    ]),
-                    center: .bottomTrailing,
-                    startRadius: 50,
-                    endRadius: 500
-                )
-                .offset(offset2)
-                .offset(x: 100, y: 100)
-                .ignoresSafeArea()
-            }
+            // Orb 2: Complementary Color (Bottom Right)
+            RadialGradient(
+                gradient: Gradient(colors: [
+                    themeManager.currentTheme.complementaryColor.opacity(colorScheme == .light ? 0.35 : 0.2),
+                    .clear
+                ]),
+                center: .bottomTrailing,
+                startRadius: 100,
+                endRadius: 500
+            )
+            .offset(offset2)
+            .offset(x: 100, y: 150)
+            .ignoresSafeArea()
         }
         .blur(radius: 60)
-        .onAppear { animateOrbs() }
     }
 
     private func animateOrbs() {

@@ -1354,86 +1354,88 @@ struct FixAIResultSheet: View {
         colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.06)
     }
 
+    @State private var offset1: CGSize = .zero
+    @State private var offset2: CGSize = .zero
     @State private var showHelp = false
+    @EnvironmentObject var themeManager: ThemeManager
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Improve Result")
-                                .font(.title3.bold())
-                                .foregroundStyle(primaryTextColor)
-                            
-                            Spacer()
-                            
-                            Button {
-                                showHelp = true
-                            } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "questionmark.circle")
-                                    Text("Help")
+            ZStack {
+                _buildDynamicBackground()
+                
+                ScrollView {
+                    VStack(spacing: 20) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Improve Result")
+                                    .font(.title3.bold())
+                                    .foregroundStyle(primaryTextColor)
+                                
+                                Spacer()
+                                
+                                Button {
+                                    showHelp = true
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "questionmark.circle")
+                                        Text("Help")
+                                    }
+                                    .font(.subheadline)
+                                    .foregroundStyle(Color("AppSecondaryAccent"))
                                 }
-                                .font(.subheadline)
-                                .foregroundStyle(Color("AppSecondaryAccent"))
                             }
                         }
-                        
-                        Text("Describe what needs to be fixed.")
-                            .font(.body)
-                            .foregroundStyle(secondaryTextColor)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .onTapGesture {
-                        isTextEditorFocused = false
-                    }
-
-                    TextEditor(text: $correction)
-                        .frame(height: 120)
-                        .padding(16)
-                        .background(inputBackgroundColor)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                        .foregroundStyle(primaryTextColor)
-                        .scrollContentBackground(.hidden)
-                        .focused($isTextEditorFocused)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(colorScheme == .dark ? .white.opacity(0.1) : .black.opacity(0.1), lineWidth: 1)
-                        )
-
-                    if let errorMessage {
-                        HStack(spacing: 8) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.red)
-                            Text(errorMessage)
-                                .foregroundStyle(.red)
-                                .font(.subheadline)
-                        }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 4)
-                    }
+                        .onTapGesture {
+                            isTextEditorFocused = false
+                        }
 
-                    Button {
-                        applyFix()
-                    } label: {
-                        Text("Apply Correction")
-                            .font(.headline)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(colorScheme == .dark ? .black : .white)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color("AppSecondaryAccent"))
+                        TextField("Describe what needs to be fixed...", text: $correction, axis: .vertical)
+                            .lineLimit(1...5)
+                            .padding(16)
+                            .background(inputBackgroundColor)
                             .clipShape(RoundedRectangle(cornerRadius: 16))
-                            .shadow(color: Color("AppSecondaryAccent").opacity(0.3), radius: 8, y: 4)
+                            .foregroundStyle(primaryTextColor)
+                            .focused($isTextEditorFocused)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(colorScheme == .dark ? .white.opacity(0.1) : .black.opacity(0.1), lineWidth: 1)
+                            )
+
+                        if let errorMessage {
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.red)
+                                Text(errorMessage)
+                                    .foregroundStyle(.red)
+                                    .font(.subheadline)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 4)
+                        }
+
+                        Button {
+                            applyFix()
+                        } label: {
+                            Text("Apply Correction")
+                                .font(.headline)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(colorScheme == .dark ? .black : .white)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color("AppSecondaryAccent"))
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                                .shadow(color: Color("AppSecondaryAccent").opacity(0.3), radius: 8, y: 4)
+                        }
+                        .disabled(correction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .opacity(correction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.6 : 1.0)
                     }
-                    .disabled(correction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .opacity(correction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.6 : 1.0)
+                    .padding(24)
                 }
-                .padding(24)
+                .scrollDismissesKeyboard(.interactively)
             }
-            .scrollDismissesKeyboard(.interactively)
-            .background(backgroundColor.ignoresSafeArea())
+            // Background is now handled by ZStack + _buildDynamicBackground
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -1441,6 +1443,7 @@ struct FixAIResultSheet: View {
                 }
             }
             .onAppear {
+                animateOrbs()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     isTextEditorFocused = true
                 }
@@ -1450,6 +1453,51 @@ struct FixAIResultSheet: View {
             } message: {
                 Text("You can tell the AI to correct specific details. Examples:\n\n• \"It's actually Grilled Chicken\"\n• \"Portion is half\"\n• \"Remove the rice\"\n• \"Calories should be 500\"\n• \"Add a banana\"")
             }
+        }
+    }
+    
+    @ViewBuilder
+    private func _buildDynamicBackground() -> some View {
+        ZStack {
+            backgroundColor.ignoresSafeArea()
+            
+            // Orb 1: Primary Theme Color (Top Left)
+            RadialGradient(
+                gradient: Gradient(colors: [
+                    colorScheme == .dark ? themeManager.currentTheme.darkPrimaryColor.opacity(0.3) : themeManager.currentTheme.primaryColor.opacity(0.2),
+                    .clear
+                ]),
+                center: .topLeading,
+                startRadius: 50,
+                endRadius: 450
+            )
+            .offset(offset1)
+            .offset(x: -150, y: -150)
+            .ignoresSafeArea()
+            
+            // Orb 2: Complementary Color (Bottom Right)
+            RadialGradient(
+                gradient: Gradient(colors: [
+                    themeManager.currentTheme.complementaryColor.opacity(colorScheme == .dark ? 0.25 : 0.2),
+                    .clear
+                ]),
+                center: .bottomTrailing,
+                startRadius: 100,
+                endRadius: 500
+            )
+            .offset(offset2)
+            .offset(x: 100, y: 150)
+            .ignoresSafeArea()
+        }
+        .blur(radius: 60)
+    }
+
+    private func animateOrbs() {
+        withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
+            offset1 = CGSize(width: 80, height: 60)
+        }
+        withAnimation(.easeInOut(duration: 10).repeatForever(autoreverses: true)) {
+            offset2 = CGSize(width: -100, height: -70)
         }
     }
 

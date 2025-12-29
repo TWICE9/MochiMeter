@@ -11,6 +11,10 @@ struct EditFoodLogView: View {
 
     @Bindable var log: LoggedFood
 
+    @EnvironmentObject var themeManager: ThemeManager
+    @State private var offset1: CGSize = .zero
+    @State private var offset2: CGSize = .zero
+
     // MARK: - Adaptive Colors (High Contrast for Light Mode)
     private var adaptiveTextColor: Color {
         colorScheme == .dark ? .white : .black
@@ -93,6 +97,9 @@ struct EditFoodLogView: View {
                 .padding(.bottom, 60)
             }
         }
+        .onAppear {
+            animateOrbs()
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -143,11 +150,45 @@ struct EditFoodLogView: View {
     @ViewBuilder
     private func _buildDynamicBackground() -> some View {
         ZStack {
-            RadialGradient(gradient: Gradient(colors: [Color("AppSecondaryAccent").opacity(colorScheme == .dark ? 0.3 : 0.2), .clear]), center: .topLeading, startRadius: 50, endRadius: 450)
-                .offset(x: -150, y: -150).ignoresSafeArea()
-            RadialGradient(gradient: Gradient(colors: [Color("AppPrimaryAccent").opacity(colorScheme == .dark ? 0.4 : 0.25), .clear]), center: .bottomTrailing, startRadius: 100, endRadius: 500)
-                .offset(x: 100, y: 150).ignoresSafeArea()
+            // Orb 1: Primary Theme Color (Top Left)
+            RadialGradient(
+                gradient: Gradient(colors: [
+                    colorScheme == .light 
+                        ? themeManager.currentTheme.primaryColor.opacity(0.4) 
+                        : themeManager.currentTheme.darkPrimaryColor.opacity(0.2),
+                    .clear
+                ]),
+                center: .topLeading,
+                startRadius: 50,
+                endRadius: 450
+            )
+            .offset(offset1)
+            .offset(x: -150, y: -150)
+            .ignoresSafeArea()
+
+            // Orb 2: Complementary Color (Bottom Right)
+            RadialGradient(
+                gradient: Gradient(colors: [
+                    themeManager.currentTheme.complementaryColor.opacity(colorScheme == .light ? 0.35 : 0.2),
+                    .clear
+                ]),
+                center: .bottomTrailing,
+                startRadius: 100,
+                endRadius: 500
+            )
+            .offset(offset2)
+            .offset(x: 100, y: 150)
+            .ignoresSafeArea()
         }
         .blur(radius: 60)
+    }
+
+    private func animateOrbs() {
+        withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
+            offset1 = CGSize(width: 80, height: 60)
+        }
+        withAnimation(.easeInOut(duration: 10).repeatForever(autoreverses: true)) {
+            offset2 = CGSize(width: -100, height: -70)
+        }
     }
 }

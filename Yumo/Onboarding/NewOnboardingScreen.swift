@@ -13,7 +13,10 @@ struct NewOnboardingScreen: View {
     @State private var flowManager = OnboardingFlowManager()
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var authManager: AuthManager
+    @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
+    @State private var offset1: CGSize = .zero
+    @State private var offset2: CGSize = .zero
 
     var onFinish: () -> Void
 
@@ -60,37 +63,54 @@ struct NewOnboardingScreen: View {
             ))
             .id(flowManager.currentPage)
         }
+        .onAppear {
+            animateOrbs()
+        }
     }
 
     @ViewBuilder
     private func _buildDynamicBackground() -> some View {
-        let topGradientColor = colorScheme == .dark
-            ? Color("AppSecondaryAccent").opacity(0.3)
-            : Color("AppSecondaryAccent").opacity(0.15)
-        let bottomGradientColor = colorScheme == .dark
-            ? Color("AppPrimaryAccent").opacity(0.4)
-            : Color("AppPrimaryAccent").opacity(0.2)
 
         ZStack {
+            // Orb 1: Primary Theme Color (Top Left)
             RadialGradient(
-                gradient: Gradient(colors: [topGradientColor, .clear]),
+                gradient: Gradient(colors: [
+                    colorScheme == .light 
+                        ? themeManager.currentTheme.primaryColor.opacity(0.4) 
+                        : themeManager.currentTheme.darkPrimaryColor.opacity(0.2),
+                    .clear
+                ]),
                 center: .topLeading,
                 startRadius: 50,
                 endRadius: 450
             )
+            .offset(offset1)
             .offset(x: -150, y: -150)
             .ignoresSafeArea()
 
+            // Orb 2: Complementary Color (Bottom Right)
             RadialGradient(
-                gradient: Gradient(colors: [bottomGradientColor, .clear]),
+                gradient: Gradient(colors: [
+                    themeManager.currentTheme.complementaryColor.opacity(colorScheme == .light ? 0.35 : 0.2),
+                    .clear
+                ]),
                 center: .bottomTrailing,
                 startRadius: 100,
                 endRadius: 500
             )
+            .offset(offset2)
             .offset(x: 100, y: 150)
             .ignoresSafeArea()
         }
         .blur(radius: 60)
+    }
+    private func animateOrbs() {
+        withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
+            offset1 = CGSize(width: 80, height: 60)
+        }
+        withAnimation(.easeInOut(duration: 10).repeatForever(autoreverses: true)) {
+            offset2 = CGSize(width: -100, height: -70)
+        }
     }
 }
 

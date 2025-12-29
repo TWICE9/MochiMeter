@@ -7,11 +7,15 @@ struct FastingScreen: View {
     
     // 1. Change from @StateObject to @EnvironmentObject
     @EnvironmentObject private var manager: FastingManager
-    
+    @EnvironmentObject private var themeManager: ThemeManager
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var colorScheme
     @State private var selectedGoal: Double = 16.0
     @State private var dialRotation: Double = 0
+    
+    @State private var offset1: CGSize = .zero
+    @State private var offset2: CGSize = .zero
     
     private var primaryTextColor: Color {
         colorScheme == .dark ? .white : Color(red: 30/255, green: 30/255, blue: 36/255)
@@ -77,6 +81,7 @@ struct FastingScreen: View {
             if manager.timerRunning {
                 manager.timeElapsed = Date().timeIntervalSince(manager.currentLog!.startTime)
             }
+            animateOrbs()
         }
     }
 
@@ -400,16 +405,49 @@ struct FastingScreen: View {
     // MARK: - Background Helper
     @ViewBuilder
     private func _buildDynamicBackground() -> some View {
-        let accentOpacity = colorScheme == .dark ? 0.3 : 0.15
-        let primaryOpacity = colorScheme == .dark ? 0.4 : 0.08
         ZStack {
             backgroundColor.ignoresSafeArea()
-            RadialGradient(gradient: Gradient(colors: [Color("AppSecondaryAccent").opacity(accentOpacity), .clear]), center: .topLeading, startRadius: 80, endRadius: 500)
-                .offset(x: -150, y: -150).ignoresSafeArea()
-            RadialGradient(gradient: Gradient(colors: [Color("AppPrimaryAccent").opacity(primaryOpacity), .clear]), center: .bottomTrailing, startRadius: 120, endRadius: 520)
-                .offset(x: 100, y: 150).ignoresSafeArea()
+            
+            // Orb 1: Primary Theme Color (Top Left)
+            RadialGradient(
+                gradient: Gradient(colors: [
+                    colorScheme == .light 
+                        ? themeManager.currentTheme.primaryColor.opacity(0.4) 
+                        : themeManager.currentTheme.darkPrimaryColor.opacity(0.2),
+                    .clear
+                ]),
+                center: .topLeading,
+                startRadius: 80,
+                endRadius: 500
+            )
+            .offset(offset1)
+            .offset(x: -150, y: -150)
+            .ignoresSafeArea()
+            
+            // Orb 2: Complementary Color (Bottom Right)
+            RadialGradient(
+                gradient: Gradient(colors: [
+                    themeManager.currentTheme.complementaryColor.opacity(colorScheme == .light ? 0.35 : 0.2),
+                    .clear
+                ]),
+                center: .bottomTrailing,
+                startRadius: 120,
+                endRadius: 520
+            )
+            .offset(offset2)
+            .offset(x: 100, y: 150)
+            .ignoresSafeArea()
         }
         .blur(radius: colorScheme == .dark ? 60 : 40)
+    }
+    
+    private func animateOrbs() {
+        withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
+            offset1 = CGSize(width: 80, height: 60)
+        }
+        withAnimation(.easeInOut(duration: 10).repeatForever(autoreverses: true)) {
+            offset2 = CGSize(width: -100, height: -70)
+        }
     }
 
     @ViewBuilder
@@ -428,6 +466,3 @@ struct FastingScreen: View {
             .shadow(color: cardShadowColor, radius: colorScheme == .dark ? 18 : 10, y: colorScheme == .dark ? 0 : 6)
     }
 }
-
-// ⚠️ Note: ScaleEffectOnPress definition (the replacement for the old style)
-// needs to be included in a file accessible by FastingScreen.swift (e.g., a shared helper file).

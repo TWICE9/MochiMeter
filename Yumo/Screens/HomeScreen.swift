@@ -1794,16 +1794,39 @@ struct HomeScreen: View {
         ZStack {
             Color("AppPrimaryDark", bundle: nil).ignoresSafeArea()
             
-            if colorScheme == .light {
-                RadialGradient(gradient: Gradient(colors: [Color("AppSecondaryAccent").opacity(0.3), .clear]), center: .topLeading, startRadius: 50, endRadius: 450)
-                    .offset(offset1).offset(x: -150, y: -150).ignoresSafeArea()
-            } else {
-                // Subtle Dark Mode Lighting - Increased visibility
-                RadialGradient(gradient: Gradient(colors: [Color.white.opacity(0.15), .clear]), center: .topLeading, startRadius: 50, endRadius: 500)
-                    .offset(offset1).offset(x: -100, y: -100).ignoresSafeArea()
-                RadialGradient(gradient: Gradient(colors: [Color.white.opacity(0.08), .clear]), center: .bottomTrailing, startRadius: 50, endRadius: 450)
-                    .offset(offset2).offset(x: 100, y: 100).ignoresSafeArea()
-                RadialGradient(gradient: Gradient(colors: [Color.white.opacity(0.06), .clear]), center: .bottomLeading, startRadius: 60, endRadius: 350)
+            // Orb 1: Primary Theme Color (Top Left)
+            RadialGradient(
+                gradient: Gradient(colors: [
+                    colorScheme == .light 
+                        ? themeManager.currentTheme.primaryColor.opacity(0.4) 
+                        : themeManager.currentTheme.darkPrimaryColor.opacity(0.18),
+                    .clear
+                ]),
+                center: .topLeading,
+                startRadius: 50,
+                endRadius: 550
+            )
+            .offset(offset1)
+            .offset(x: -150, y: -150)
+            .ignoresSafeArea()
+            
+            // Orb 2: Complementary Color (Bottom Right)
+            RadialGradient(
+                gradient: Gradient(colors: [
+                    themeManager.currentTheme.complementaryColor.opacity(colorScheme == .light ? 0.35 : 0.15),
+                    .clear
+                ]),
+                center: .bottomTrailing,
+                startRadius: 100,
+                endRadius: 500
+            )
+            .offset(offset2)
+            .offset(x: 100, y: 150)
+            .ignoresSafeArea()
+            
+            // Orb 3 (Dark Mode Only): Adds depth
+            if colorScheme == .dark {
+                RadialGradient(gradient: Gradient(colors: [Color.white.opacity(0.05), .clear]), center: .bottomLeading, startRadius: 60, endRadius: 350)
                     .offset(offset1).offset(x: -50, y: 120).ignoresSafeArea()
             }
         }
