@@ -9,9 +9,38 @@ struct WeightLossIntensityPage: View {
     @Bindable var flowManager: OnboardingFlowManager
     @Environment(\.colorScheme) private var colorScheme
 
-    // Slider range: 0.1 to 1.0 kg per week
-    private let minRate: Double = 0.1
-    private let maxRate: Double = 1.0
+    // Slider range: 0.1 to 1.0 kg per week (internal always in kg)
+    private let minRateKg: Double = 0.1
+    private let maxRateKg: Double = 1.0
+    
+    // Conversion factor: 1 kg = 2.20462 lbs
+    private let kgToLbs: Double = 2.20462
+    
+    // Check if using imperial
+    private var isImperial: Bool {
+        flowManager.unitSystem == .imperial
+    }
+    
+    // Display values for slider (in user's preferred unit)
+    private var displayValue: Double {
+        isImperial ? flowManager.weeklyWeightChangeKg * kgToLbs : flowManager.weeklyWeightChangeKg
+    }
+    
+    private var displayMinRate: Double {
+        isImperial ? minRateKg * kgToLbs : minRateKg
+    }
+    
+    private var displayMaxRate: Double {
+        isImperial ? maxRateKg * kgToLbs : maxRateKg
+    }
+    
+    private var unitLabel: String {
+        isImperial ? "lbs" : "kg"
+    }
+    
+    private var displayStep: Double {
+        isImperial ? 0.1 : 0.05
+    }
 
     private var primaryText: Color {
         OnboardingTheme.primaryText(colorScheme)
@@ -51,7 +80,7 @@ struct WeightLossIntensityPage: View {
         return Int(ceil(weightToLose / flowManager.weeklyWeightChangeKg))
     }
 
-    // Intensity label
+    // Intensity label (based on kg value for consistency)
     private var intensityLabel: String {
         switch flowManager.weeklyWeightChangeKg {
         case 0..<0.3:
@@ -83,6 +112,15 @@ struct WeightLossIntensityPage: View {
     private var dailyDeficit: Int {
         Int(flowManager.weeklyWeightChangeKg * 7700 / 7)
     }
+    
+    // Formatted display string with unit
+    private var formattedWeightChange: String {
+        if isImperial {
+            return String(format: "%.1f lbs", displayValue)
+        } else {
+            return String(format: "%.2f kg", flowManager.weeklyWeightChangeKg)
+        }
+    }
 
     var body: some View {
         OnboardingQuestionView(
@@ -92,140 +130,122 @@ struct WeightLossIntensityPage: View {
             canGoBack: true,
             onBack: { flowManager.goBack() }
         ) {
-            VStack(spacing: 32) {
+            VStack(spacing: 16) {
                 // Current selection display
-                VStack(spacing: 8) {
-                    Text(String(format: "%.2f kg", flowManager.weeklyWeightChangeKg))
-                        .font(.system(size: 48, weight: .bold, design: .rounded))
+                VStack(spacing: 4) {
+                    Text(formattedWeightChange)
+                        .font(.system(size: 40, weight: .bold, design: .rounded))
                         .foregroundStyle(intensityColor)
 
                     Text("per week")
-                        .font(.title3)
+                        .font(.subheadline)
                         .foregroundStyle(secondaryText)
 
                     // Intensity badge
                     Text(intensityLabel)
-                        .font(.headline)
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
                         .background(intensityColor)
                         .clipShape(Capsule())
                 }
-                .padding(.top, 20)
+                .padding(.top, 8)
 
-                // Slider
-                VStack(spacing: 12) {
+                // Slider (always operates in kg internally)
+                VStack(spacing: 8) {
                     Slider(
                         value: $flowManager.weeklyWeightChangeKg,
-                        in: minRate...maxRate,
+                        in: minRateKg...maxRateKg,
                         step: 0.05
                     )
                     .tint(intensityColor)
 
-                    // Min/Max labels
+                    // Min/Max labels (in user's unit)
                     HStack {
-                        Text("0.1 kg")
-                            .font(.caption)
+                        Text(String(format: isImperial ? "%.1f lbs" : "%.1f kg", displayMinRate))
+                            .font(.caption2)
                             .foregroundStyle(mutedText)
                         Spacer()
-                        Text("1.0 kg")
-                            .font(.caption)
+                        Text(String(format: isImperial ? "%.1f lbs" : "%.1f kg", displayMaxRate))
+                            .font(.caption2)
                             .foregroundStyle(mutedText)
                     }
                 }
-                .padding(.horizontal)
 
-                // Info cards
-                VStack(spacing: 16) {
-                    // Estimated end date card
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Estimated Goal Date")
-                                .font(.subheadline)
-                                .foregroundStyle(secondaryText)
-                            Text(formattedEndDate)
-                                .font(.title3.weight(.semibold))
-                                .foregroundStyle(primaryText)
-                        }
+                // Goal Date (full width)
+                HStack {
+                    Image(systemName: "calendar")
+                        .font(.body)
+                        .foregroundStyle(Color("AppSecondaryAccent"))
+                    Text("Goal Date")
+                        .font(.caption)
+                        .foregroundStyle(secondaryText)
+                    Spacer()
+                    Text(formattedEndDate)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(primaryText)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(OnboardingTheme.cardBackground(colorScheme))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(OnboardingTheme.cardStroke(colorScheme), lineWidth: 1)
+                )
 
-                        Spacer()
+                // Duration & Deficit (side by side)
+                HStack(spacing: 8) {
 
-                        Image(systemName: "calendar")
-                            .font(.title2)
-                            .foregroundStyle(Color("AppSecondaryAccent"))
-                    }
-                    .padding()
-                    .background(OnboardingTheme.cardBackground(colorScheme))
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(OnboardingTheme.cardStroke(colorScheme), lineWidth: 1)
-                    )
-
-                    // Duration card
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Duration")
-                                .font(.subheadline)
-                                .foregroundStyle(secondaryText)
-                            Text("\(weeksUntilGoal) weeks")
-                                .font(.title3.weight(.semibold))
-                                .foregroundStyle(primaryText)
-                        }
-
-                        Spacer()
-
+                    // Duration
+                    VStack(spacing: 2) {
                         Image(systemName: "clock")
-                            .font(.title2)
+                            .font(.body)
                             .foregroundStyle(Color("AppSecondaryAccent"))
+                        Text("\(weeksUntilGoal) weeks")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(primaryText)
                     }
-                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
                     .background(OnboardingTheme.cardBackground(colorScheme))
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 16)
+                        RoundedRectangle(cornerRadius: 12)
                             .stroke(OnboardingTheme.cardStroke(colorScheme), lineWidth: 1)
                     )
 
-                    // Daily deficit info
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Daily Calorie Deficit")
-                                .font(.subheadline)
-                                .foregroundStyle(secondaryText)
-                            Text("\(dailyDeficit) cal")
-                                .font(.title3.weight(.semibold))
-                                .foregroundStyle(primaryText)
-                        }
-
-                        Spacer()
-
+                    // Daily deficit
+                    VStack(spacing: 2) {
                         Image(systemName: "flame")
-                            .font(.title2)
+                            .font(.body)
                             .foregroundStyle(intensityColor)
+                        Text("\(dailyDeficit) cal/day")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(primaryText)
                     }
-                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
                     .background(OnboardingTheme.cardBackground(colorScheme))
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 16)
+                        RoundedRectangle(cornerRadius: 12)
                             .stroke(OnboardingTheme.cardStroke(colorScheme), lineWidth: 1)
                     )
                 }
 
                 // Recommendation text
                 if flowManager.weeklyWeightChangeKg >= 0.85 {
-                    Text("A deficit of 1kg/week is intense. Consider a gentler pace for sustainable results.")
+                    Text("A deficit of 1kg/week is intense. Consider a gentler pace.")
                         .font(.caption)
                         .foregroundStyle(.orange)
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal)
                 }
-
-                ContinueButton(title: "Continue", isEnabled: !flowManager.isNavigating) {
-                    flowManager.goNext()
-                }
+            }
+        } footer: {
+            ContinueButton(title: "Continue", isEnabled: !flowManager.isNavigating) {
+                flowManager.goNext()
             }
         }
     }

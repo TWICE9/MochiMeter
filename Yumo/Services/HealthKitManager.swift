@@ -25,6 +25,11 @@ class HealthKitManager: ObservableObject {
     // Weight data
     @Published var latestWeight: Double? = nil
     @Published var weightHistory: [(date: Date, weightKg: Double)] = []
+    
+    // Profile data (for onboarding)
+    @Published var profileHeight: Double? = nil  // in cm
+    @Published var profileDateOfBirth: Date? = nil
+    @Published var profileBiologicalSex: HKBiologicalSex? = nil
 
     private init() {}
 
@@ -38,7 +43,10 @@ class HealthKitManager: ObservableObject {
             HKObjectType.quantityType(forIdentifier: .stepCount)!,
             HKObjectType.quantityType(forIdentifier: .activeEnergyBurned)!,
             HKObjectType.quantityType(forIdentifier: .appleExerciseTime)!,
-            HKObjectType.quantityType(forIdentifier: .bodyMass)!
+            HKObjectType.quantityType(forIdentifier: .bodyMass)!,
+            HKObjectType.quantityType(forIdentifier: .height)!,
+            HKObjectType.characteristicType(forIdentifier: .dateOfBirth)!,
+            HKObjectType.characteristicType(forIdentifier: .biologicalSex)!
         ]
 
         let typesToWrite: Set<HKSampleType> = [
@@ -48,6 +56,83 @@ class HealthKitManager: ObservableObject {
         try await healthStore.requestAuthorization(toShare: typesToWrite, read: typesToRead)
         isAuthorized = true
         print("✅ HealthKit authorization granted")
+    }
+    
+    // MARK: - Fetch Profile Data for Onboarding
+    
+    /// Fetches user profile data (weight, height, DOB, sex) for onboarding pre-fill
+    func fetchProfileForOnboarding() async -> (weight: Double?, height: Double?, dob: Date?, sex: HKBiologicalSex?) {
+        // Fetch weight
+        await fetchLatestWeight()
+        let weight = latestWeight
+        
+        // Fetch height
+        let height = await fetchLatestHeight()
+        self.profileHeight = height
+        
+        // Fetch DOB
+        let dob = fetchDateOfBirth()
+        self.profileDateOfBirth = dob
+        
+        // Fetch biological sex
+        let sex = fetchBiologicalSex()
+        self.profileBiologicalSex = sex
+        
+        print("📊 HealthKit Profile Data:")
+        print("   - Weight: \(weight.map { "\($0) kg" } ?? "N/A")")
+        print("   - Height: \(height.map { "\($0) cm" } ?? "N/A")")
+        print("   - DOB: \(dob.map { "\($0)" } ?? "N/A")")
+        print("   - Sex: \(sex.map { "\($0.rawValue)" } ?? "N/A")")
+        
+        return (weight, height, dob, sex)
+    }
+    
+    /// Fetches the most recent height from HealthKit
+    private func fetchLatestHeight() async -> Double? {
+        guard let heightType = HKQuantityType.quantityType(forIdentifier: .height) else { return nil }
+
+        return await withCheckedContinuation { continuation in
+            let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
+            let query = HKSampleQuery(
+                sampleType: heightType,
+                predicate: nil,
+                limit: 1,
+                sortDescriptors: [sortDescriptor]
+            ) { _, samples, error in
+                guard let sample = samples?.first as? HKQuantitySample else {
+                    if let error = error {
+                        print("HealthKit height fetch error: \(error.localizedDescription)")
+                    }
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let heightCm = sample.quantity.doubleValue(for: .meterUnit(with: .centi))
+                continuation.resume(returning: heightCm)
+            }
+            healthStore.execute(query)
+        }
+    }
+    
+    /// Fetches date of birth from HealthKit characteristics
+    private func fetchDateOfBirth() -> Date? {
+        do {
+            let dobComponents = try healthStore.dateOfBirthComponents()
+            return Calendar.current.date(from: dobComponents)
+        } catch {
+            print("HealthKit DOB fetch error: \(error.localizedDescription)")
+            return nil
+        }
+    }
+    
+    /// Fetches biological sex from HealthKit characteristics
+    private func fetchBiologicalSex() -> HKBiologicalSex? {
+        do {
+            let sex = try healthStore.biologicalSex()
+            return sex.biologicalSex
+        } catch {
+            print("HealthKit sex fetch error: \(error.localizedDescription)")
+            return nil
+        }
     }
 
     // MARK: - Fetch Today's Data

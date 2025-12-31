@@ -1220,6 +1220,7 @@ struct HomeScreen: View {
                 placeholderLog.potassiumPerServing = analysis.potassium
                 placeholderLog.servingSizeDescription = analysis.servingSize
                 placeholderLog.aiIngredients = analysis.ingredients
+                placeholderLog.aiIngredientCalories = analysis.ingredientCaloriesDictionary()
                 placeholderLog.aiConfidence = analysis.confidence
                 placeholderLog.brand = "AI Analyzed"
                 placeholderLog.isAnalyzing = false

@@ -1,5 +1,4 @@
 // Supabase Edge Function to analyze food images using OpenAI GPT-5 Mini
-// Supports both immediate mode (returns result) and background mode (writes to DB)
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
@@ -53,12 +52,6 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  // Create service role client for background mode (writes to DB)
-  const supabaseAdmin = createClient(
-    Deno.env.get('SUPABASE_URL') ?? '',
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-  )
-
   try {
     // Verify user is authenticated
     const supabase = createClient(
@@ -84,64 +77,12 @@ serve(async (req) => {
       )
     }
 
-    // Parse request body
-    const body = await req.json()
-    const { imageBase64, imagePath, analysisId, mode } = body
-    const isBackgroundMode = mode === "background" && analysisId && imagePath
+    console.log("Food scan request received")
 
-    console.log(`Food scan request received (mode: ${isBackgroundMode ? 'background' : 'immediate'})`)
+    // Get image from request
+    const { imageBase64 } = await req.json()
 
-    let base64Image = imageBase64
-
-    // If background mode, fetch image from storage
-    if (isBackgroundMode && !imageBase64) {
-      console.log(`📥 Fetching image from storage: ${imagePath}`)
-
-      // Update status to processing
-      await supabaseAdmin
-        .from('pending_analyses')
-        .update({ status: 'processing', started_at: new Date().toISOString() })
-        .eq('id', analysisId)
-
-      try {
-        const { data: imageData, error: downloadError } = await supabaseAdmin
-          .storage
-          .from('food-images')
-          .download(imagePath)
-
-        if (downloadError || !imageData) {
-          throw new Error(`Failed to download image: ${downloadError?.message}`)
-        }
-
-        // Convert to base64
-        const arrayBuffer = await imageData.arrayBuffer()
-        const bytes = new Uint8Array(arrayBuffer)
-        let binary = ''
-        for (let i = 0; i < bytes.length; i++) {
-          binary += String.fromCharCode(bytes[i])
-        }
-        base64Image = btoa(binary)
-
-        console.log(`✅ Image downloaded and converted (${bytes.length} bytes)`)
-      } catch (downloadErr: unknown) {
-        const errorMessage = downloadErr instanceof Error ? downloadErr.message : String(downloadErr)
-        console.error(`❌ Failed to fetch image: ${errorMessage}`)
-
-        // Update status to failed
-        await supabaseAdmin
-          .from('pending_analyses')
-          .update({
-            status: 'failed',
-            error_message: `Image download failed: ${errorMessage}`,
-            completed_at: new Date().toISOString()
-          })
-          .eq('id', analysisId)
-
-        throw new Error(`Image download failed: ${errorMessage}`)
-      }
-    }
-
-    if (!base64Image) {
+    if (!imageBase64) {
       throw new Error('No image provided')
     }
 
@@ -176,7 +117,7 @@ serve(async (req) => {
               {
                 type: 'image_url',
                 image_url: {
-                  url: `data:image/jpeg;base64,${base64Image}`,
+                  url: `data:image/jpeg;base64,${imageBase64}`,
                   detail: 'low'
                 }
               }
@@ -191,19 +132,6 @@ serve(async (req) => {
     if (!response.ok) {
       const errorData = await response.json()
       console.error('OpenAI API error:', errorData)
-
-      // If background mode, update status to failed
-      if (isBackgroundMode) {
-        await supabaseAdmin
-          .from('pending_analyses')
-          .update({
-            status: 'failed',
-            error_message: `OpenAI API error: ${errorData.error?.message || response.status}`,
-            completed_at: new Date().toISOString()
-          })
-          .eq('id', analysisId)
-      }
-
       throw new Error(`OpenAI API error: ${errorData.error?.message || response.status}`)
     }
 
@@ -216,16 +144,6 @@ serve(async (req) => {
     // Robust JSON cleaning to handle markdown artifacts
     const jsonMatch = content.match(/\{[\s\S]*\}/)
     if (!jsonMatch) {
-      if (isBackgroundMode) {
-        await supabaseAdmin
-          .from('pending_analyses')
-          .update({
-            status: 'failed',
-            error_message: 'No valid JSON found in AI response',
-            completed_at: new Date().toISOString()
-          })
-          .eq('id', analysisId)
-      }
       throw new Error("No valid JSON found in AI response")
     }
 
@@ -234,42 +152,10 @@ serve(async (req) => {
       nutritionData = JSON.parse(jsonMatch[0])
     } catch (parseError) {
       console.error("Failed to parse AI response as JSON:", content)
-
-      if (isBackgroundMode) {
-        await supabaseAdmin
-          .from('pending_analyses')
-          .update({
-            status: 'failed',
-            error_message: 'Failed to parse nutrition data from AI response',
-            completed_at: new Date().toISOString()
-          })
-          .eq('id', analysisId)
-      }
-
       throw new Error("Failed to parse nutrition data from AI response")
     }
 
     console.log("Food analysis complete for:", nutritionData.name)
-
-    // If background mode, write result to database
-    if (isBackgroundMode) {
-      console.log(`📝 Writing result to database for analysis: ${analysisId}`)
-
-      await supabaseAdmin
-        .from('pending_analyses')
-        .update({
-          status: 'completed',
-          result: nutritionData,
-          completed_at: new Date().toISOString()
-        })
-        .eq('id', analysisId)
-
-      console.log(`✅ Analysis ${analysisId} completed and saved to database`)
-
-      // Clean up the image from storage (optional, to save space)
-      // Uncomment if you want to delete images after processing:
-      // await supabaseAdmin.storage.from('food-images').remove([imagePath])
-    }
 
     return new Response(
       JSON.stringify(nutritionData),
@@ -279,13 +165,12 @@ serve(async (req) => {
       }
     )
 
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    console.error('❌ Error:', errorMessage)
+  } catch (error) {
+    console.error('❌ Error:', error.message)
     return new Response(
       JSON.stringify({
-        error: errorMessage,
-        details: String(error)
+        error: error.message,
+        details: error.toString()
       }),
       {
         status: 400,

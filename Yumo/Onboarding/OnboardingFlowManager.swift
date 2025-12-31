@@ -68,14 +68,14 @@ class OnboardingFlowManager {
         guard canProceed(for: currentPage) else { return }
 
         performNavigation {
-            // Skip target weight page (8) AND intensity page (9) if weight goal is "maintain"
-            if currentPage == 7 && weightGoal == .maintain {
+            // Skip target weight page (9) AND intensity page (10) if weight goal is "maintain"
+            if currentPage == 8 && weightGoal == .maintain {
                 targetWeight = weight  // Set target to current weight
-                currentPage = min(currentPage + 3, totalPages - 1)  // Skip pages 8 and 9
+                currentPage = min(currentPage + 3, totalPages - 1)  // Skip pages 9 and 10
             }
-            // Skip intensity page (9) if weight goal is "gain" (target weight still needed)
-            else if currentPage == 8 && weightGoal == .gain {
-                currentPage = min(currentPage + 2, totalPages - 1)  // Skip page 9
+            // Skip intensity page (10) if weight goal is "gain" (target weight still needed)
+            else if currentPage == 9 && weightGoal == .gain {
+                currentPage = min(currentPage + 2, totalPages - 1)  // Skip page 10
             }
             else {
                 currentPage = min(currentPage + 1, totalPages - 1)
@@ -85,13 +85,13 @@ class OnboardingFlowManager {
 
     func goBack() {
         performNavigation {
-            // Skip intensity page (9) AND target weight page (8) when going back if "maintain"
-            if currentPage == 10 && weightGoal == .maintain {
-                currentPage = max(currentPage - 3, 0)  // Skip back over pages 9 and 8
+            // Skip intensity page (10) AND target weight page (9) when going back if "maintain"
+            if currentPage == 11 && weightGoal == .maintain {
+                currentPage = max(currentPage - 3, 0)  // Skip back over pages 10 and 9
             }
-            // Skip intensity page (9) when going back if weight goal is "gain"
-            else if currentPage == 10 && weightGoal == .gain {
-                currentPage = max(currentPage - 2, 0)  // Skip back over page 9
+            // Skip intensity page (10) when going back if weight goal is "gain"
+            else if currentPage == 11 && weightGoal == .gain {
+                currentPage = max(currentPage - 2, 0)  // Skip back over page 10
             }
             else {
                 currentPage = max(currentPage - 1, 0)
@@ -104,17 +104,17 @@ class OnboardingFlowManager {
         let page = page ?? currentPage
 
         switch page {
-        case 2: // Name
+        case 3: // Name
             return !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        case 5: // Height & Weight
+        case 6: // Height & Weight
             return height > 0 && weight > 0
-        case 8: // Target Weight
+        case 9: // Target Weight
             return targetWeight > 0
-        case 10: // What's Stopping You (multi-select)
+        case 11: // What's Stopping You (multi-select)
             return !selectedBlockers.isEmpty
-        case 11: // Diet Type
+        case 12: // Diet Type
             return dietType != nil
-        case 12: // What to Accomplish (multi-select)
+        case 13: // What to Accomplish (multi-select)
             return !selectedGoalsToAccomplish.isEmpty
         default:
             return true
@@ -215,6 +215,49 @@ class OnboardingFlowManager {
             weight = oldSystem.convertWeightToMetric(Double(weightLbs))
             weightWhole = Int(weight)
             weightDecimal = Int((weight - Double(weightWhole)) * 10)
+        }
+    }
+    
+    // MARK: - HealthKit Integration
+    
+    /// Apply HealthKit profile data to pre-fill onboarding fields
+    func applyHealthKitData(weight weightKg: Double?, height heightCm: Double?, dob: Date?, sex: Int?) {
+        if let weightKg = weightKg, weightKg > 0 {
+            self.weight = weightKg
+            self.weightWhole = Int(weightKg)
+            self.weightDecimal = Int((weightKg - Double(Int(weightKg))) * 10)
+            self.weightLbs = Int(weightKg * 2.20462)
+            self.targetWeight = weightKg  // Start with current as target
+            print("✅ Pre-filled weight from HealthKit: \(weightKg) kg")
+        }
+        
+        if let heightCm = heightCm, heightCm > 0 {
+            self.height = heightCm
+            // Also update imperial values
+            let totalInches = heightCm / 2.54
+            self.heightFeet = Int(totalInches / 12)
+            self.heightInches = Int(totalInches.truncatingRemainder(dividingBy: 12))
+            print("✅ Pre-filled height from HealthKit: \(heightCm) cm")
+        }
+        
+        if let dob = dob {
+            self.birthDate = dob
+            print("✅ Pre-filled DOB from HealthKit: \(dob)")
+        }
+        
+        // Convert HKBiologicalSex raw value to our Gender enum
+        // HKBiologicalSex: 0 = notSet, 1 = female, 2 = male, 3 = other
+        if let sexRaw = sex {
+            switch sexRaw {
+            case 1: // female
+                self.gender = .female
+                print("✅ Pre-filled gender from HealthKit: female")
+            case 2: // male
+                self.gender = .male
+                print("✅ Pre-filled gender from HealthKit: male")
+            default:
+                print("ℹ️ HealthKit sex not set or other, keeping default")
+            }
         }
     }
 }

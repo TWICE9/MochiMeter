@@ -507,9 +507,6 @@ struct AICameraScanView: View {
         Task {
             // Get userId
             let userId = await UserSession.shared.getCurrentUserId()
-            
-            // Generate a unique ID for this food item to track it
-            let foodUUID = UUID()
 
             // Create placeholder food item on MainActor and get its ID
             let placeholderFoodID = await MainActor.run { () -> PersistentIdentifier in
@@ -523,7 +520,6 @@ struct AICameraScanView: View {
                     carbsPerServing: 0,
                     fatPerServing: 0
                 )
-                food.id = foodUUID  // Use our tracked UUID
                 food.userId = userId
                 food.isAnalyzing = true
 
@@ -558,108 +554,76 @@ struct AICameraScanView: View {
                 }
             }
 
-            // Check if user is logged in - use background-safe approach if so
-            if let userId = userId {
-                // Background-safe approach: Upload to Supabase, fire and forget
-                do {
-                    let analysisId = try await PendingAnalysisManager.shared.submitForAnalysis(
-                        image: image,
-                        localFoodId: foodUUID.uuidString,
-                        userId: userId
-                    )
-                    
-                    print("🚀 Background analysis submitted: \(analysisId)")
-                    
-                    // Track analytics
-                    await MainActor.run {
-                        AnalyticsManager.shared.trackAIScanUsed(success: true, itemsDetected: 1)
-                    }
-                    
-                    // The edge function will complete in background and write to pending_analyses
-                    // Next time app opens, PendingAnalysisSync will update the local food
-                    
-                } catch {
-                    print("⚠️ Background submission failed, falling back to immediate: \(error)")
-                    // Fall back to immediate analysis if background submission fails
-                    await analyzeImmediately(image: image, placeholderFoodID: placeholderFoodID, userId: userId)
-                }
-            } else {
-                // Not logged in - use immediate analysis (old behavior)
-                await analyzeImmediately(image: image, placeholderFoodID: placeholderFoodID, userId: nil)
-            }
-        }
-    }
-    
-    /// Immediate analysis - used as fallback or for non-logged-in users
-    private func analyzeImmediately(image: UIImage, placeholderFoodID: PersistentIdentifier, userId: String?) async {
-        do {
-            let result = try await AIFoodScanner.shared.analyzeFood(image: image)
+            // Analyze food in background
+            do {
+                let result = try await AIFoodScanner.shared.analyzeFood(image: image)
 
-            // Update placeholder with real data
-            await MainActor.run {
-                // Fetch the food using its persistent ID
-                if let placeholderFood = modelContext.model(for: placeholderFoodID) as? LoggedFood {
-                    placeholderFood.name = result.name
-                    placeholderFood.servingSizeDescription = result.servingSize
-                    placeholderFood.caloriesPerServing = result.calories
-                    placeholderFood.proteinPerServing = result.protein
-                    placeholderFood.carbsPerServing = result.carbs
-                    placeholderFood.fatPerServing = result.fat
-                    placeholderFood.fiberPerServing = result.fiber
-                    placeholderFood.sugarPerServing = result.sugar
-                    placeholderFood.brand = "AI Analyzed"
-                    placeholderFood.aiIngredients = result.ingredients
-                    placeholderFood.aiIngredientCalories = result.ingredientCaloriesDictionary()
-                    placeholderFood.aiConfidence = result.confidence
-                    placeholderFood.isAnalyzing = false
+                // Update placeholder with real data
+                await MainActor.run {
+                    // Fetch the food using its persistent ID
+                    if let placeholderFood = modelContext.model(for: placeholderFoodID) as? LoggedFood {
+                        placeholderFood.name = result.name
+                        placeholderFood.servingSizeDescription = result.servingSize
+                        placeholderFood.caloriesPerServing = result.calories
+                        placeholderFood.proteinPerServing = result.protein
+                        placeholderFood.carbsPerServing = result.carbs
+                        placeholderFood.fatPerServing = result.fat
+                        placeholderFood.fiberPerServing = result.fiber
+                        placeholderFood.sugarPerServing = result.sugar
+                        placeholderFood.brand = "AI Analyzed"
+                        placeholderFood.aiIngredients = result.ingredients
+                        placeholderFood.aiIngredientCalories = result.ingredientCaloriesDictionary()
+                        placeholderFood.aiConfidence = result.confidence
+                        placeholderFood.isAnalyzing = false
 
-                    try? modelContext.save()
-                    NotificationCenter.default.post(name: Notification.Name("FoodLogCreated"), object: nil)
+                        try? modelContext.save()
+                        NotificationCenter.default.post(name: Notification.Name("FoodLogCreated"), object: nil)
 
-                    // Upload to cloud
-                    if let userId = userId {
-                        Task {
-                            await CloudSyncManager.shared.uploadFoodLogImmediately(placeholderFood, userId: userId)
+                        // Upload to cloud
+                        if let userId = userId {
+                            Task {
+                                await CloudSyncManager.shared.uploadFoodLogImmediately(placeholderFood, userId: userId)
 
-                        await CloudScanUploader.shared.incrementScanCount(
-                            for: result.generateAIBarcode(),
-                            name: result.name,
-                            brand: "AI Analyzed",
-                            caloriesPerServing: result.calories,
-                            proteinPerServing: result.protein,
-                            carbsPerServing: result.carbs,
-                            fatPerServing: result.fat,
-                            fiberPerServing: result.fiber,
-                            sugarPerServing: result.sugar,
-                            saltPerServing: 0,
-                            potassiumPerServing: 0,
-                            servingAmount: 1.0
-                        )
+                            await CloudScanUploader.shared.incrementScanCount(
+                                for: result.generateAIBarcode(),
+                                name: result.name,
+                                brand: "AI Analyzed",
+                                caloriesPerServing: result.calories,
+                                proteinPerServing: result.protein,
+                                carbsPerServing: result.carbs,
+                                fatPerServing: result.fat,
+                                fiberPerServing: result.fiber,
+                                sugarPerServing: result.sugar,
+                                saltPerServing: 0,
+                                potassiumPerServing: 0,
+                                servingAmount: 1.0
+                            )
+                            }
                         }
                     }
-                }
 
-                // Haptic feedback
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
-                
-                // Track analytics
-                AnalyticsManager.shared.trackAIScanUsed(success: true, itemsDetected: 1)
-                AnalyticsManager.shared.trackFoodLogged(name: result.name, calories: result.calories, source: .aiScan)
-            }
-        } catch {
-            // If analysis fails, mark as error
-            await MainActor.run {
-                // Fetch the food using its persistent ID
-                if let placeholderFood = modelContext.model(for: placeholderFoodID) as? LoggedFood {
-                    placeholderFood.name = "Analysis failed"
-                    placeholderFood.isAnalyzing = false
-                    try? modelContext.save()
+                    // Haptic feedback
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    
+                    // Track analytics
+                    AnalyticsManager.shared.trackAIScanUsed(success: true, itemsDetected: 1)
+                    AnalyticsManager.shared.trackFoodLogged(name: result.name, calories: result.calories, source: .aiScan)
                 }
+            } catch {
+                // If analysis fails, mark as error
+                await MainActor.run {
+                    // Fetch the food using its persistent ID
+                    if let placeholderFood = modelContext.model(for: placeholderFoodID) as? LoggedFood {
+                        placeholderFood.name = "Analysis failed"
+                        placeholderFood.isAnalyzing = false
+                        try? modelContext.save()
+                    }
 
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
-                
-                // Track analytics
-                AnalyticsManager.shared.trackAIScanUsed(success: false, itemsDetected: 0)
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    
+                    // Track analytics
+                    AnalyticsManager.shared.trackAIScanUsed(success: false, itemsDetected: 0)
+                }
             }
         }
     }

@@ -142,56 +142,80 @@ struct YumoApp: App {
     // Shared SwiftData container using App Group storage
     let container: ModelContainer = SharedModelContainer.create()
 
+    // State to track if app launch/initialization is complete
+    @State private var isAppReady = false
+    
+    // Track scene phase for background/foreground detection
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .id(authManager.currentUser?.id)
-                .environmentObject(authManager)
-                .environmentObject(superwallManager)
-                .environmentObject(deepLinkManager)
-                .environmentObject(themeManager)
-                .environmentObject(adManager)
-                .modelContainer(container)
-
-                // Initialize Superwall
-                .task {
-                    superwallManager.configure()
-                    // Check premium status on launch to avoid unnecessary paywalls
-                    await superwallManager.checkPremiumStatus()
-                    
-                    // Initialize AdMob
-                    adManager.initializeAds()
+            ZStack {
+                if isAppReady {
+                    ContentView()
+                        .id(authManager.currentUser?.id)
+                        .environmentObject(authManager)
+                        .environmentObject(superwallManager)
+                        .environmentObject(deepLinkManager)
+                        .environmentObject(themeManager)
+                        .environmentObject(adManager)
+                        .modelContainer(container)
+                        // Handle deep links at App level
+                        .onOpenURL { url in
+                            print("🔗 YumoApp onOpenURL received: \(url.absoluteString)")
+                            deepLinkManager.handleURL(url)
+                        }
+                        .transition(.opacity.animation(.easeInOut(duration: 0.4)))
+                } else {
+                    LaunchScreen()
+                        .transition(.opacity.animation(.easeInOut(duration: 0.4)))
+                }
+            }
+            // Initialize App Services
+            .task {
+                // 1. Configure Superwall & AdMob (Synchronous, fast)
+                superwallManager.configure()
+                adManager.initializeAds()
+                
+                // 2. Async Initializations
+                // We run this sequentially to avoid Swift 6 concurrency issues with MainActor-isolated properties (like ModelContext)
+                
+                // Check premium status (Network)
+                await superwallManager.checkPremiumStatus()
+                
+                // Apply appearance (UI/MainActor)
+                await applyUserAppearanceMode()
+                
+                // Sync cloud → device (Database/MainActor)
+                await CloudFoodSyncManager.shared.syncOnAppLaunch(context: container.mainContext)
+                
+                // Sync any pending AI analyses that completed while app was closed
+                await PendingAnalysisSync.shared.syncCompletedAnalyses(modelContext: container.mainContext)
+                
+                // 3. Background tasks (fire and forget)
+                Task {
+                    await CloudFoodSyncManager.shared.syncOncePerDay(context: container.mainContext)
                 }
 
-                // Apply user's appearance mode preference
-                .task {
-                    await applyUserAppearanceMode()
-                }
+                // 4. Migration checks
+                await migrateWeeklyWeightChangeKg()
+                
+                // 5. Artificial minimum delay to prevent jarring flash
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
 
-                // Sync cloud → device on launch
-                .task {
-                    await CloudFoodSyncManager.shared.syncOnAppLaunch(
-                        context: container.mainContext
-                    )
+                // 6. Signal app is ready
+                withAnimation {
+                    isAppReady = true
                 }
-
-                // Daily refresh for branded foods
-                .task {
-                    await CloudFoodSyncManager.shared.syncOncePerDay(
-                        context: container.mainContext
-                    )
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active && isAppReady {
+                print("🔄 App became active, checking for background analyses...")
+                Task {
+                    await PendingAnalysisSync.shared.syncCompletedAnalyses(modelContext: container.mainContext)
                 }
-
-                // Migrate existing users to have weeklyWeightChangeKg default
-                .task {
-                    await migrateWeeklyWeightChangeKg()
-                }
-
-                // Handle deep links at App level
-                .onOpenURL { url in
-                    print("🔗 YumoApp onOpenURL received: \(url.absoluteString)")
-                    deepLinkManager.handleURL(url)
-                }
+            }
         }
     }
 

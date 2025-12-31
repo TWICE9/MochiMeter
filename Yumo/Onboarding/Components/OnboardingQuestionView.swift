@@ -5,14 +5,52 @@
 
 import SwiftUI
 
-struct OnboardingQuestionView<Content: View>: View {
+struct OnboardingQuestionView<Content: View, Footer: View>: View {
     let question: String
     let subtitle: String?
     let progress: Double
     let canGoBack: Bool
     let onBack: () -> Void
     @ViewBuilder let content: () -> Content
+    @ViewBuilder let footer: () -> Footer
     @Environment(\.colorScheme) private var colorScheme
+
+    // Convenience initializer for no footer
+    init(
+        question: String,
+        subtitle: String?,
+        progress: Double,
+        canGoBack: Bool,
+        onBack: @escaping () -> Void,
+        @ViewBuilder content: @escaping () -> Content
+    ) where Footer == EmptyView {
+        self.question = question
+        self.subtitle = subtitle
+        self.progress = progress
+        self.canGoBack = canGoBack
+        self.onBack = onBack
+        self.content = content
+        self.footer = { EmptyView() }
+    }
+    
+    // Full initializer with footer
+    init(
+        question: String,
+        subtitle: String?,
+        progress: Double,
+        canGoBack: Bool,
+        onBack: @escaping () -> Void,
+        @ViewBuilder content: @escaping () -> Content,
+        @ViewBuilder footer: @escaping () -> Footer
+    ) {
+        self.question = question
+        self.subtitle = subtitle
+        self.progress = progress
+        self.canGoBack = canGoBack
+        self.onBack = onBack
+        self.content = content
+        self.footer = footer
+    }
 
     var body: some View {
         let primaryText = OnboardingTheme.primaryText(colorScheme)
@@ -36,26 +74,26 @@ struct OnboardingQuestionView<Content: View>: View {
                 Spacer()
             }
             .padding(.horizontal, 24)
-            .padding(.vertical, 16)
+            .padding(.vertical, 12)
 
             ScrollView {
-                VStack(spacing: 24) {
+                VStack(spacing: 20) {
                     // Question
-                    VStack(spacing: 12) {
+                    VStack(spacing: 8) {
                         Text(question)
-                            .font(.largeTitle)
+                            .font(.title)
                             .fontWeight(.bold)
                             .foregroundColor(primaryText)
                             .multilineTextAlignment(.center)
 
                         if let subtitle = subtitle {
                             Text(subtitle)
-                                .font(.body)
+                                .font(.subheadline)
                                 .foregroundColor(mutedText)
                                 .multilineTextAlignment(.center)
                         }
                     }
-                    .padding(.top, 40)
+                    .padding(.top, 16)
 
                     // Custom content
                     content()
@@ -63,6 +101,11 @@ struct OnboardingQuestionView<Content: View>: View {
                 .padding(.horizontal, 24)
             }
             .scrollIndicators(.hidden)
+            
+            // Pinned footer (always visible at bottom)
+            footer()
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
         }
     }
 }

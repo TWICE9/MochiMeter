@@ -51,6 +51,7 @@ final class LoggedFood {
     var isHalal: Bool = false
     var recipe: Recipe?
     var aiIngredients: [String]? = nil  // AI-detected ingredients
+    var aiIngredientCalories: [String: Double]? = nil  // AI-detected ingredient calorie breakdown (name → calories)
     var aiConfidence: String? = nil  // AI confidence level: "high", "medium", or "low"
     var isAnalyzing: Bool = false  // True when AI analysis is in progress
 

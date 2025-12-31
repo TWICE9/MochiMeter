@@ -64,6 +64,10 @@ struct FoodLogDetailView: View {
     @EnvironmentObject var authManager: AuthManager
     
     @State private var showSavedFeedback = false
+    
+    // Ingredient editor state
+    @State private var showIngredientEditor = false
+    @State private var ingredientToEdit: (name: String, calories: Double)?
 
     var body: some View {
         ZStack {
@@ -152,6 +156,12 @@ struct FoodLogDetailView: View {
                         }
                     }
                     .padding(.horizontal, 24)
+                    
+                    // Ingredient Calorie Breakdown (AI-analyzed foods only)
+                    if let breakdown = log.aiIngredientCalories, !breakdown.isEmpty {
+                        _buildIngredientBreakdownSection(breakdown)
+                            .padding(.horizontal, 24)
+                    }
 
                     _buildContributionSection()
                         .padding(.horizontal, 24)
@@ -193,6 +203,18 @@ struct FoodLogDetailView: View {
                     showFixSheet = false
                 }
             )
+        }
+        .sheet(isPresented: $showIngredientEditor) {
+            if let ingredient = ingredientToEdit {
+                IngredientEditSheet(
+                    log: log,
+                    ingredientName: ingredient.name,
+                    ingredientCalories: ingredient.calories
+                ) {
+                    showIngredientEditor = false
+                    ingredientToEdit = nil
+                }
+            }
         }
         .ignoresSafeArea(edges: .top)
         .alert("Delete this log?", isPresented: $showingDeleteConfirmation) {
@@ -579,6 +601,74 @@ struct FoodLogDetailView: View {
             Text("\(value, specifier: "%.1f") \(unit)")
                 .font(.system(.body, design: .rounded).weight(.medium))
                 .foregroundStyle(adaptiveTextColor)
+        }
+    }
+    
+    @ViewBuilder
+    private func _buildIngredientBreakdownSection(_ breakdown: [String: Double]) -> some View {
+        let sortedBreakdown = breakdown.sorted { $0.value > $1.value } // Sort by calories descending
+        let totalFromBreakdown = breakdown.values.reduce(0, +)
+        
+        FrostedGlassContainer {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Image(systemName: "chart.pie.fill")
+                        .foregroundStyle(Color("AppPrimaryAccent"))
+                    Text("Calorie Breakdown")
+                        .font(.headline)
+                        .foregroundStyle(adaptiveTextColor)
+                    Spacer()
+                    Text("Tap to edit")
+                        .font(.caption)
+                        .foregroundStyle(adaptiveSecondaryTextColor.opacity(0.6))
+                }
+                
+                ForEach(sortedBreakdown, id: \.key) { ingredient, calories in
+                    let percentage = totalFromBreakdown > 0 ? (calories / totalFromBreakdown) * 100 : 0
+                    
+                    VStack(spacing: 8) {
+                        HStack {
+                            Text(ingredient)
+                                .font(.subheadline)
+                                .foregroundStyle(adaptiveTextColor)
+                            Spacer()
+                            Text("\(Int(calories)) kcal")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(adaptiveSecondaryTextColor)
+                            Text("(\(Int(percentage))%)")
+                                .font(.caption)
+                                .foregroundStyle(adaptiveSecondaryTextColor.opacity(0.7))
+                                .frame(width: 40, alignment: .trailing)
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(adaptiveSecondaryTextColor.opacity(0.5))
+                        }
+                        
+                        // Progress bar for visual representation
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(cardBackgroundColor)
+                                    .frame(height: 6)
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(Color("AppPrimaryAccent").opacity(0.7))
+                                    .frame(width: geo.size.width * min(percentage / 100, 1.0), height: 6)
+                            }
+                        }
+                        .frame(height: 6)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        ingredientToEdit = (name: ingredient, calories: calories)
+                        showIngredientEditor = true
+                    }
+                    
+                    if ingredient != sortedBreakdown.last?.key {
+                        Divider()
+                            .background(adaptiveSecondaryTextColor.opacity(0.2))
+                    }
+                }
+            }
         }
     }
     

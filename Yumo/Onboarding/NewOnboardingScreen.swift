@@ -30,22 +30,22 @@ struct NewOnboardingScreen: View {
                 switch flowManager.currentPage {
                 case 0: WelcomePage(flowManager: flowManager, onFinish: onFinish)
                 case 1: FeatureScreenPage(flowManager: flowManager)
-                case 2: NamePage(flowManager: flowManager)
-                case 3: GenderPage(flowManager: flowManager)
-                case 4: ActivityLevelPage(flowManager: flowManager)
-                case 5: HeightWeightPage(flowManager: flowManager)
-                case 6: DateOfBirthPage(flowManager: flowManager)
-                case 7: WeightGoalPage(flowManager: flowManager)
-                case 8: TargetWeightPage(flowManager: flowManager)
-                case 9: WeightLossIntensityPage(flowManager: flowManager)  // NEW: Weight loss intensity slider
-                case 10: BlockersPage(flowManager: flowManager)
-                case 11: DietTypePage(flowManager: flowManager)
-                case 12: GoalsToAccomplishPage(flowManager: flowManager)
-                case 13:
+                case 2: EarlyHealthKitPage(flowManager: flowManager)  // NEW: Early HealthKit to pre-fill data
+                case 3: NamePage(flowManager: flowManager)
+                case 4: GenderPage(flowManager: flowManager)
+                case 5: ActivityLevelPage(flowManager: flowManager)
+                case 6: HeightWeightPage(flowManager: flowManager)
+                case 7: DateOfBirthPage(flowManager: flowManager)
+                case 8: WeightGoalPage(flowManager: flowManager)
+                case 9: TargetWeightPage(flowManager: flowManager)
+                case 10: WeightLossIntensityPage(flowManager: flowManager)
+                case 11: BlockersPage(flowManager: flowManager)
+                case 12: DietTypePage(flowManager: flowManager)
+                case 13: GoalsToAccomplishPage(flowManager: flowManager)
+                case 14:
                     ThankYouAnimationView {
                         flowManager.goNext()
                     }
-                case 14: HealthKitPermissionPage(flowManager: flowManager)
                 case 15: DoneScreenPage(flowManager: flowManager)
                 case 16:
                     LoadingScreenView {
@@ -181,6 +181,26 @@ struct DateOfBirthPage: View {
 struct TargetWeightPage: View {
     @Bindable var flowManager: OnboardingFlowManager
     @Environment(\.colorScheme) private var colorScheme
+    
+    // Conversion factor
+    private let kgToLbs: Double = 2.20462
+    
+    private var isImperial: Bool {
+        flowManager.unitSystem == .imperial
+    }
+    
+    // For imperial: display in lbs
+    private var targetWeightLbs: Int {
+        Int(round(flowManager.targetWeight * kgToLbs))
+    }
+    
+    // Picker range in kg
+    private let minWeightKg = 30
+    private let maxWeightKg = 180
+    
+    // Picker range in lbs
+    private var minWeightLbs: Int { Int(round(Double(minWeightKg) * kgToLbs)) }
+    private var maxWeightLbs: Int { Int(round(Double(maxWeightKg) * kgToLbs)) }
 
     var body: some View {
         OnboardingQuestionView(
@@ -190,17 +210,33 @@ struct TargetWeightPage: View {
             canGoBack: true,
             onBack: { flowManager.goBack() }
         ) {
-            Picker("Target Weight", selection: $flowManager.targetWeight) {
-                ForEach(30...180, id: \.self) { kg in
-                    Text("\(kg) kg").tag(Double(kg))
+            if isImperial {
+                // Imperial picker (lbs)
+                Picker("Target Weight", selection: Binding(
+                    get: { targetWeightLbs },
+                    set: { newLbs in
+                        flowManager.targetWeight = Double(newLbs) / kgToLbs
+                    }
+                )) {
+                    ForEach(minWeightLbs...maxWeightLbs, id: \.self) { lbs in
+                        Text("\(lbs) lbs").tag(lbs)
+                    }
                 }
+                .pickerStyle(.wheel)
+                .frame(height: 200)
+                .foregroundStyle(OnboardingTheme.primaryText(colorScheme))
+            } else {
+                // Metric picker (kg)
+                Picker("Target Weight", selection: $flowManager.targetWeight) {
+                    ForEach(minWeightKg...maxWeightKg, id: \.self) { kg in
+                        Text("\(kg) kg").tag(Double(kg))
+                    }
+                }
+                .pickerStyle(.wheel)
+                .frame(height: 200)
+                .foregroundStyle(OnboardingTheme.primaryText(colorScheme))
             }
-            .pickerStyle(.wheel)
-            .frame(height: 200)
-            .foregroundStyle(OnboardingTheme.primaryText(colorScheme))
-
-            Spacer().frame(height: 20)
-
+        } footer: {
             ContinueButton(title: "Continue", isEnabled: flowManager.canProceed() && !flowManager.isNavigating) {
                 flowManager.goNext()
             }
