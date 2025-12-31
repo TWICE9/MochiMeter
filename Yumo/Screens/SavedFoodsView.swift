@@ -28,6 +28,7 @@ struct SavedFoodsView: View {
     @State private var foodToDelete: SavedFood?
     @State private var showingDeleteConfirmation = false
     @State private var isLoading = true
+    @FocusState private var searchFocused: Bool
     
     private var filteredFoods: [SavedFood] {
         if searchText.isEmpty {
@@ -63,6 +64,7 @@ struct SavedFoodsView: View {
                     
                     TextField("Search saved foods...", text: $searchText)
                         .foregroundStyle(primaryTextColor)
+                        .focused($searchFocused)
                     
                     if !searchText.isEmpty {
                         Button {
@@ -76,6 +78,10 @@ struct SavedFoodsView: View {
                 .padding()
                 .background(Color("AppTextPrimary").opacity(colorScheme == .dark ? 0.12 : 0.08))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    searchFocused = true
+                }
                 .padding(.horizontal)
                 .padding(.top, 8)
                 

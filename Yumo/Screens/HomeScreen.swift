@@ -574,7 +574,8 @@ struct HomeScreen: View {
                 Text(isViewingToday ? "Recent Logs" : "Logs for \(selectedDate, format: .dateTime.month().day())")
                     .font(.headline)
                     .foregroundStyle(Color("AppTextPrimary"))
-                    .padding(.horizontal, 24)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 12)
 
                 List {
                     ForEach(recentLogs) { log in
@@ -593,13 +594,14 @@ struct HomeScreen: View {
                         }
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
+                        .listRowInsets(EdgeInsets(top: 12, leading: 0, bottom: 12, trailing: 0))
                     }
                 }
                 .listStyle(.plain)
                 .scrollDisabled(true)
-                .environment(\.defaultMinListRowHeight, 0)
-                .frame(height: CGFloat(recentLogs.count) * 130)
+                .scrollContentBackground(.hidden)
+                .contentMargins(.vertical, 8, for: .scrollContent)
+                .frame(height: CGFloat(recentLogs.count) * 142 + 16) // 118 card + 24 insets = 142 per row
             } else {
                 // Empty state for both today and other dates
                 FrostedGlassContainer {
@@ -853,7 +855,7 @@ struct HomeScreen: View {
             Text("Quick Tools")
                 .font(.headline)
                 .foregroundStyle(Color("AppTextPrimary"))
-                .padding(.horizontal, 24)
+                .frame(maxWidth: .infinity, alignment: .center)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
@@ -958,6 +960,10 @@ struct HomeScreen: View {
                 )
         )
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .contentShape(Rectangle()) // Expand tap area to entire container
+        .onTapGesture {
+            isQuickMealFocused = true
+        }
         .shadow(color: colorScheme == .dark ? Color("AppPrimaryAccent").opacity(0.15) : .white.opacity(0.15), radius: 8, x: 0, y: -2)
         .shadow(color: .black.opacity(colorScheme == .dark ? 0.5 : 0.3), radius: 8, x: 0, y: 4)
         .padding(.horizontal, 24)

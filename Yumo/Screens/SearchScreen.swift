@@ -164,6 +164,10 @@ struct SearchScreen: View {
                             }
                             .padding(.vertical, 8)
                         }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            searchFocused = true
+                        }
                     }
                     .padding(.horizontal, 24)
 

@@ -1439,6 +1439,10 @@ struct FixAIResultSheet: View {
                                 RoundedRectangle(cornerRadius: 16)
                                     .stroke(colorScheme == .dark ? .white.opacity(0.1) : .black.opacity(0.1), lineWidth: 1)
                             )
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                isTextEditorFocused = true
+                            }
 
                         if let errorMessage {
                             HStack(spacing: 8) {

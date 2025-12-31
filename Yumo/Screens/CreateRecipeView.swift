@@ -612,6 +612,10 @@ struct IngredientSearchSheet: View {
                 .padding(14)
                 .background(cardBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    isSearchFocused = true
+                }
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
 

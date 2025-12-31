@@ -21,6 +21,7 @@ struct ShoppingListView: View {
     @State private var offset1: CGSize = .zero
     @State private var offset2: CGSize = .zero
     @FocusState private var isInputFocused: Bool
+    @State private var showingClearConfirmation = false
 
     // MARK: - Adaptive Colors
     private var primaryTextColor: Color {
@@ -50,6 +51,8 @@ struct ShoppingListView: View {
     private var placeholderColor: Color {
         colorScheme == .dark ? .white.opacity(0.6) : Color(red: 160/255, green: 160/255, blue: 170/255)
     }
+    
+    @State private var isLoading = true
 
     var body: some View {
         ZStack {
@@ -65,10 +68,15 @@ struct ShoppingListView: View {
                     .padding(.horizontal, 24)
                     .padding(.top, 20)
                 
-                // List + Empty State
+                // List + Empty State + Loading
                 ZStack {
-                    // 📌 Placeholder when list is empty
-                    if items.isEmpty {
+                    // Skeleton loading state
+                    if isLoading && items.isEmpty {
+                        _buildSkeletonList()
+                            .transition(.opacity)
+                    }
+                    // Empty state (only show after loading completes)
+                    else if !isLoading && items.isEmpty {
                         VStack(spacing: 16) {
                             Image(systemName: "cart.badge.plus")
                                 .font(.system(size: 48))
@@ -89,30 +97,33 @@ struct ShoppingListView: View {
                     }
                     
                     // Actual list
-                    ScrollViewReader { proxy in
-                        List {
-                            ForEach(items) { item in
-                                _buildListRow(item: item)
-                                    .id(item.id)
-                                    .listRowSeparator(.hidden)
-                                    .listRowBackground(Color.clear)
-                                    .padding(.vertical, 0.5)
+                    if !items.isEmpty {
+                        ScrollViewReader { proxy in
+                            List {
+                                ForEach(items) { item in
+                                    _buildListRow(item: item)
+                                        .id(item.id)
+                                        .listRowSeparator(.hidden)
+                                        .listRowBackground(Color.clear)
+                                        .padding(.vertical, 0.5)
+                                }
+                                .onDelete(perform: deleteItems)
                             }
-                            .onDelete(perform: deleteItems)
-                        }
-                        .listStyle(.plain)
-                        .scrollContentBackground(.hidden)
-                        .safeAreaInset(edge: .bottom) {
-                            Spacer()
-                                .frame(height: 80)
-                        }
-                        .onChange(of: items.count) { _, _ in
-                            if let lastItem = items.last {
-                                withAnimation {
-                                    proxy.scrollTo(lastItem.id, anchor: .bottom)
+                            .listStyle(.plain)
+                            .scrollContentBackground(.hidden)
+                            .safeAreaInset(edge: .bottom) {
+                                Spacer()
+                                    .frame(height: 80)
+                            }
+                            .onChange(of: items.count) { _, _ in
+                                if let lastItem = items.last {
+                                    withAnimation {
+                                        proxy.scrollTo(lastItem.id, anchor: .bottom)
+                                    }
                                 }
                             }
                         }
+                        .transition(.opacity)
                     }
 
                 }
@@ -121,19 +132,83 @@ struct ShoppingListView: View {
             }
             .navigationTitle("Shopping List")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    if !items.isEmpty {
+                        Button {
+                            showingClearConfirmation = true
+                        } label: {
+                            Text("Clear All")
+                                .font(.subheadline)
+                                .foregroundStyle(.red)
+                        }
+                    }
+                }
+            }
+            .alert("Clear Shopping List?", isPresented: $showingClearConfirmation) {
+                Button("Clear All", role: .destructive) {
+                    clearAllItems()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will remove all \(items.count) items from your shopping list.")
+            }
         }
         .onAppear {
             animateOrbs()
             syncWithCloud()
         }
     }
+    
+    // MARK: - Skeleton Loading
+    @ViewBuilder
+    private func _buildSkeletonList() -> some View {
+        ScrollView {
+            VStack(spacing: 8) {
+                ForEach(0..<5, id: \.self) { _ in
+                    _buildSkeletonRow()
+                }
+            }
+            .padding(.horizontal, 24)
+        }
+    }
+    
+    @ViewBuilder
+    private func _buildSkeletonRow() -> some View {
+        HStack(spacing: 16) {
+            // Checkbox skeleton
+            RoundedRectangle(cornerRadius: 4)
+                .fill(colorScheme == .dark ? Color.white.opacity(0.1) : Color.black.opacity(0.08))
+                .frame(width: 24, height: 24)
+            
+            // Text skeleton
+            RoundedRectangle(cornerRadius: 4)
+                .fill(colorScheme == .dark ? Color.white.opacity(0.1) : Color.black.opacity(0.08))
+                .frame(width: CGFloat.random(in: 100...200), height: 16)
+            
+            Spacer()
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(cardBackgroundColor)
+                .stroke(cardBorderColor, lineWidth: 1)
+        )
+        .shimmer()
+    }
 
     // MARK: - Actions
     
     private func syncWithCloud() {
-        guard !userId.isEmpty else { return }
+        guard !userId.isEmpty else {
+            withAnimation { isLoading = false }
+            return
+        }
         
         Task { @MainActor in
+            // Add minimum delay so skeleton doesn't flash
+            let delayTask = Task { try? await Task.sleep(nanoseconds: 500_000_000) }
+            
             do {
                 let dtos = try await CloudShoppingManager.shared.fetchShoppingItems(userId: userId)
                 
@@ -168,6 +243,12 @@ struct ShoppingListView: View {
                 print("🛒 Synced \(dtos.count) items from cloud")
             } catch {
                 print("❌ Cloud Sync Failed: \(error.localizedDescription)")
+            }
+            
+            // Wait for minimum delay before hiding skeleton
+            _ = await delayTask.value
+            withAnimation {
+                isLoading = false
             }
         }
     }
@@ -232,6 +313,23 @@ struct ShoppingListView: View {
             }
         }
     }
+    
+    private func clearAllItems() {
+        withAnimation {
+            for item in items {
+                let id = item.id
+                
+                // Cloud Sync
+                Task {
+                    await CloudShoppingManager.shared.delete(id: id)
+                }
+                modelContext.delete(item)
+            }
+        }
+        
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.success)
+    }
 
     // MARK: - Add Item Bar
     @ViewBuilder
@@ -250,6 +348,10 @@ struct ShoppingListView: View {
             )
             .foregroundStyle(primaryTextColor)
             .lineLimit(1...5)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                isInputFocused = true
+            }
             .onChange(of: newItemName) { _, newValue in
                 if newValue.contains("\n") {
                     newItemName = newValue.replacingOccurrences(of: "\n", with: "")
