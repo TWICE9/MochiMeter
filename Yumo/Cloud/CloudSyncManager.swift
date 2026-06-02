@@ -8,10 +8,13 @@ enum CloudSyncStep: CaseIterable {
     case foodLogs
     case waterLogs
     case weightLogs
+    case fitnessLogs
     case fastingLogs
     case recipes
     case reminders
     case userGoals
+    case runningProfile
+    case runningPlans
     case complete
 
     var label: String {
@@ -19,10 +22,13 @@ enum CloudSyncStep: CaseIterable {
         case .foodLogs: return "Food logs synced"
         case .waterLogs: return "Water logs synced"
         case .weightLogs: return "Weight logs synced"
+        case .fitnessLogs: return "Fitness logs synced"
         case .fastingLogs: return "Fasting logs synced"
         case .recipes: return "Recipes synced"
         case .reminders: return "Reminders synced"
         case .userGoals: return "Goals synced"
+        case .runningProfile: return "Running profile synced"
+        case .runningPlans: return "Running plans synced"
         case .complete: return "Full sync complete"
         }
     }
@@ -67,6 +73,10 @@ actor CloudSyncManager {
                 return .weightLogs
             }
             group.addTask {
+                await self.syncFitnessLogs(userId: userId, context: context)
+                return .fitnessLogs
+            }
+            group.addTask {
                 await self.syncFastingLogs(userId: userId, context: context)
                 return .fastingLogs
             }
@@ -77,6 +87,14 @@ actor CloudSyncManager {
             group.addTask {
                 await self.syncUserGoals(userId: userId, context: context)
                 return .userGoals
+            }
+            group.addTask {
+                await self.syncRunningProfile(userId: userId, context: context)
+                return .runningProfile
+            }
+            group.addTask {
+                await self.syncRunningPlans(userId: userId, context: context)
+                return .runningPlans
             }
 
             // Report progress as each sync completes
@@ -809,12 +827,785 @@ actor CloudSyncManager {
 
             try await supabaseClient.database
                 .from("profiles")
-                .upsert(params)
+                .update(params)
+                .eq("user_id", value: userUUID)
                 .execute()
 
             print("✅ User goals uploaded to Supabase")
         } catch {
             print("❌ Failed to upload user goals: \(error)")
         }
+    }
+
+    // MARK: - Fitness Logs Sync
+
+    func syncFitnessLogs(userId: String, context: ModelContext) async {
+        do {
+            let localPredicate = #Predicate<LoggedFitness> { $0.userId == userId }
+            let localDescriptor = FetchDescriptor<LoggedFitness>(predicate: localPredicate)
+            let localLogs = (try? context.fetch(localDescriptor)) ?? []
+
+            let cloudLogs: [CloudFitnessLog] = try await supabaseClient.database
+                .from("user_fitness_logs")
+                .select()
+                .eq("user_id", value: userId)
+                .execute()
+                .value
+
+            // Merge cloud → local
+            for cloudLog in cloudLogs {
+                if let localLog = localLogs.first(where: { $0.id.uuidString == cloudLog.id }) {
+                    if cloudLog.updated_at > localLog.date {
+                        localLog.steps = cloudLog.steps
+                        localLog.caloriesBurned = cloudLog.calories_burned
+                    }
+                } else {
+                    let dateFormatter = ISO8601DateFormatter()
+                    dateFormatter.formatOptions = [.withFullDate]
+                    guard let date = dateFormatter.date(from: cloudLog.date) else { continue }
+                    
+                    let newLog = LoggedFitness(
+                        id: UUID(uuidString: cloudLog.id) ?? UUID(),
+                        date: date,
+                        steps: cloudLog.steps,
+                        caloriesBurned: cloudLog.calories_burned
+                    )
+                    newLog.userId = userId
+                    context.insert(newLog)
+                }
+            }
+
+            // Upload local → cloud (BATCH for performance)
+            var logsToUpload: [CloudFitnessLog] = []
+            let dateFormatter = ISO8601DateFormatter()
+            dateFormatter.formatOptions = [.withFullDate]
+            
+            for localLog in localLogs {
+                let existsInCloud = cloudLogs.contains(where: { $0.id == localLog.id.uuidString })
+                if !existsInCloud {
+                    logsToUpload.append(CloudFitnessLog(
+                        id: localLog.id.uuidString,
+                        user_id: userId,
+                        date: dateFormatter.string(from: localLog.date),
+                        steps: localLog.steps,
+                        calories_burned: localLog.caloriesBurned,
+                        updated_at: localLog.date
+                    ))
+                }
+            }
+            
+            // Batch upsert all at once
+            if !logsToUpload.isEmpty {
+                try await supabaseClient.database.from("user_fitness_logs").upsert(logsToUpload).execute()
+            }
+
+            try? context.save()
+            print("✅ Fitness logs synced")
+
+        } catch {
+            print("❌ Fitness logs sync failed: \(error)")
+        }
+    }
+
+    /// Upload a single fitness log immediately after creation/update
+    func uploadFitnessLogImmediately(_ log: LoggedFitness, userId: String) async {
+        do {
+            let dateFormatter = ISO8601DateFormatter()
+            dateFormatter.formatOptions = [.withFullDate]
+            
+            let cloudLog = CloudFitnessLog(
+                id: log.id.uuidString,
+                user_id: userId,
+                date: dateFormatter.string(from: log.date),
+                steps: log.steps,
+                calories_burned: log.caloriesBurned,
+                updated_at: log.date
+            )
+            try await supabaseClient.database.from("user_fitness_logs").upsert(cloudLog).execute()
+            print("✅ Fitness log uploaded")
+        } catch {
+            print("❌ Failed to upload fitness log: \(error)")
+        }
+    }
+
+    /// Delete a fitness log from the cloud
+    func deleteFitnessLogFromCloud(logId: String, userId: String) async {
+        do {
+            try await supabaseClient.database
+                .from("user_fitness_logs")
+                .delete()
+                .eq("id", value: logId)
+                .eq("user_id", value: userId)
+                .execute()
+
+            print("☁️ Deleted fitness log from cloud: \(logId)")
+        } catch {
+            print("❌ Failed to delete fitness log from cloud: \(error)")
+        }
+    }
+
+    // MARK: - Running Profile Sync
+
+    /// Bidirectional sync for the user's single running_profile row.
+    /// Resolves conflicts by newer `updated_at`.
+    @MainActor
+    func syncRunningProfile(userId: String, context: ModelContext) async {
+        let local = await UserScopedQuery.fetchRunningProfile(context: context)
+
+        do {
+            let remoteRows: [CloudRunningProfile] = try await supabaseClient.database
+                .from("running_profiles")
+                .select()
+                .eq("user_id", value: userId)
+                .limit(1)
+                .execute()
+                .value
+            let remote = remoteRows.first
+
+            switch (local, remote) {
+            case (nil, nil):
+                // Nothing on either side — user hasn't onboarded yet.
+                break
+
+            case (nil, let cloud?):
+                // Cloud-only: hydrate local.
+                let newLocal = makeLocalRunningProfile(from: cloud)
+                context.insert(newLocal)
+                try? context.save()
+
+            case (let localProfile?, nil):
+                // Local-only: push to cloud.
+                await uploadRunningProfileImmediately(localProfile, userId: userId)
+
+            case (let localProfile?, let cloud?):
+                // Both present — newer wins.
+                if cloud.updated_at > localProfile.updatedAt {
+                    applyCloudToLocal(cloud, local: localProfile)
+                    try? context.save()
+                } else if localProfile.updatedAt > cloud.updated_at {
+                    await uploadRunningProfileImmediately(localProfile, userId: userId)
+                }
+            }
+
+            print("✅ Running profile synced")
+        } catch {
+            print("❌ Running profile sync failed: \(error)")
+        }
+    }
+
+    /// Upload the local running profile to Supabase (upsert).
+    /// Derives `user_id` from the live Supabase auth session so the value
+    /// always matches `auth.uid()` that RLS checks against.
+    func uploadRunningProfileImmediately(_ profile: RunningProfile, userId: String) async {
+        // Use the live auth session's UUID — not the cached `userId` string —
+        // so we never accidentally push a row whose user_id disagrees with
+        // the JWT on the request.
+        guard let session = try? await supabaseClient.auth.session else {
+            print("❌ Cannot upload running profile: no active Supabase session")
+            return
+        }
+        let authUserId = session.user.id
+
+        let cloud = await makeCloudRunningProfile(from: profile, userId: authUserId)
+        do {
+            try await supabaseClient.database
+                .from("running_profiles")
+                .upsert(cloud)
+                .execute()
+            print("✅ Running profile uploaded")
+        } catch {
+            print("❌ Failed to upload running profile: \(error)")
+        }
+    }
+
+    // MARK: Running profile mapping helpers
+
+    @MainActor
+    private func makeCloudRunningProfile(from p: RunningProfile, userId: UUID) -> CloudRunningProfile {
+        CloudRunningProfile(
+            user_id: userId,
+            has_completed_onboarding: p.hasCompletedOnboarding,
+            experience: p.experienceRaw,
+            has_run_before: p.hasRunBefore,
+            primary_goal: p.primaryGoalRaw,
+            weekly_run_days_target: p.weeklyRunDaysTarget,
+            available_days: p.availableDaysRaw,
+            long_run_day: p.longRunDayRaw,
+            current_longest_run_km: p.currentLongestRunKm,
+            current_weekly_km: p.currentWeeklyKm,
+            typical_pace_seconds_per_km: p.typicalPaceSecondsPerKm,
+            recent_1km_seconds: p.recent1kmSeconds,
+            recent_5km_seconds: p.recent5kmSeconds,
+            recent_10km_seconds: p.recent10kmSeconds,
+            recent_half_marathon_seconds: p.recentHalfMarathonSeconds,
+            recent_marathon_seconds: p.recentMarathonSeconds,
+            target_race_date: p.targetRaceDate,
+            target_race_distance: p.targetRaceDistanceRaw,
+            target_race_name: p.targetRaceName,
+            target_race_goal_time_seconds: p.targetRaceGoalTimeSeconds,
+            injuries_or_limitations: p.injuriesOrLimitations,
+            cross_training_activities: p.crossTrainingActivitiesRaw.isEmpty ? nil : p.crossTrainingActivitiesRaw,
+            cross_training_sessions_per_week: p.crossTrainingSessionsPerWeek,
+            cross_training_schedule: p.crossTrainingScheduleRaw.isEmpty ? nil : p.crossTrainingScheduleRaw,
+            workout_reminders_enabled: p.workoutRemindersEnabled,
+            workout_reminder_hour: p.workoutReminderHour,
+            workout_reminder_minute: p.workoutReminderMinute,
+            created_at: p.createdAt,
+            updated_at: p.updatedAt
+        )
+    }
+
+    @MainActor
+    private func makeLocalRunningProfile(from cloud: CloudRunningProfile) -> RunningProfile {
+        let p = RunningProfile()
+        p.userId = cloud.user_id.uuidString.lowercased()
+        applyCloudToLocal(cloud, local: p)
+        return p
+    }
+
+    @MainActor
+    private func applyCloudToLocal(_ cloud: CloudRunningProfile, local p: RunningProfile) {
+        p.hasCompletedOnboarding = cloud.has_completed_onboarding
+        p.experienceRaw = cloud.experience
+        p.hasRunBefore = cloud.has_run_before
+        p.primaryGoalRaw = cloud.primary_goal
+        p.weeklyRunDaysTarget = cloud.weekly_run_days_target
+        p.availableDaysRaw = cloud.available_days
+        p.longRunDayRaw = cloud.long_run_day
+        p.currentLongestRunKm = cloud.current_longest_run_km
+        p.currentWeeklyKm = cloud.current_weekly_km
+        p.typicalPaceSecondsPerKm = cloud.typical_pace_seconds_per_km
+        p.recent1kmSeconds = cloud.recent_1km_seconds
+        p.recent5kmSeconds = cloud.recent_5km_seconds
+        p.recent10kmSeconds = cloud.recent_10km_seconds
+        p.recentHalfMarathonSeconds = cloud.recent_half_marathon_seconds
+        p.recentMarathonSeconds = cloud.recent_marathon_seconds
+        p.targetRaceDate = cloud.target_race_date
+        p.targetRaceDistanceRaw = cloud.target_race_distance
+        p.targetRaceName = cloud.target_race_name
+        p.targetRaceGoalTimeSeconds = cloud.target_race_goal_time_seconds
+        p.injuriesOrLimitations = cloud.injuries_or_limitations
+        p.crossTrainingActivitiesRaw = cloud.cross_training_activities ?? []
+        p.crossTrainingSessionsPerWeek = cloud.cross_training_sessions_per_week ?? 0
+        p.crossTrainingScheduleRaw = cloud.cross_training_schedule ?? []
+        p.workoutRemindersEnabled = cloud.workout_reminders_enabled ?? false
+        p.workoutReminderHour = cloud.workout_reminder_hour
+        p.workoutReminderMinute = cloud.workout_reminder_minute
+        p.createdAt = cloud.created_at
+        p.updatedAt = cloud.updated_at
+    }
+
+    // MARK: - Running Plans Sync
+
+    /// Bidirectional sync for the user's running plans and their sessions.
+    /// Phase 3a scope: hydrate local SwiftData from cloud + push any local
+    /// plans that exist only locally. Conflict resolution is
+    /// newer-`updated_at`-wins at the plan and session level.
+    @MainActor
+    func syncRunningPlans(userId: String, context: ModelContext) async {
+        do {
+            // --- Fetch remote ---
+            let remotePlans: [CloudRunningPlan] = try await supabaseClient.database
+                .from("running_plans")
+                .select()
+                .eq("user_id", value: userId)
+                .execute()
+                .value
+
+            // Paginate session fetch in 500-row pages so we never hit PostgREST's
+            // default max-rows ceiling (1000). Developers who regenerate many test
+            // plans accumulate hundreds of sessions; without pagination the newest
+            // plan's sessions can be silently dropped from the response.
+            var remoteSessions: [CloudPlannedSession] = []
+            let sessionPageSize = 500
+            var sessionOffset = 0
+            while true {
+                let page: [CloudPlannedSession] = try await supabaseClient.database
+                    .from("planned_sessions")
+                    .select()
+                    .eq("user_id", value: userId)
+                    .range(from: sessionOffset, to: sessionOffset + sessionPageSize - 1)
+                    .execute()
+                    .value
+                remoteSessions.append(contentsOf: page)
+                if page.count < sessionPageSize { break }
+                sessionOffset += sessionPageSize
+            }
+
+            // --- Local ---
+            let localPlans = await UserScopedQuery.fetchRunningPlans(context: context)
+
+            // Plan index by id (local).
+            var localPlansById: [UUID: RunningPlan] = [:]
+            for p in localPlans { localPlansById[p.id] = p }
+
+            // Merge cloud plans → local.
+            for cloud in remotePlans {
+                if let local = localPlansById[cloud.id] {
+                    if cloud.updated_at > local.updatedAt {
+                        applyCloudToLocal(cloud, local: local)
+                    }
+                } else {
+                    let newLocal = makeLocalRunningPlan(from: cloud)
+                    context.insert(newLocal)
+                    localPlansById[newLocal.id] = newLocal
+                }
+            }
+
+            // Upload local-only plans.
+            let remotePlanIds = Set(remotePlans.map(\.id))
+            var plansToUpload: [CloudRunningPlan] = []
+            for local in localPlans where !remotePlanIds.contains(local.id) {
+                plansToUpload.append(makeCloudRunningPlan(from: local, userId: userId))
+            }
+            if !plansToUpload.isEmpty {
+                _ = try? await supabaseClient.database
+                    .from("running_plans")
+                    .upsert(plansToUpload)
+                    .execute()
+            }
+
+            // --- Sessions ---
+            // Local sessions grouped by plan.
+            let allLocalSessions: [PlannedSession] = localPlansById.values.flatMap { $0.sessions }
+            var localSessionsById: [UUID: PlannedSession] = [:]
+            for s in allLocalSessions { localSessionsById[s.id] = s }
+
+            // Merge cloud sessions → local.
+            for cloudSession in remoteSessions {
+                if let local = localSessionsById[cloudSession.id] {
+                    if cloudSession.updated_at > local.updatedAt {
+                        applyCloudToLocal(cloudSession, local: local)
+                    }
+                } else if let owningPlan = localPlansById[cloudSession.plan_id] {
+                    let newLocal = makeLocalPlannedSession(from: cloudSession, plan: owningPlan)
+                    context.insert(newLocal)
+                    localSessionsById[newLocal.id] = newLocal
+                }
+            }
+
+            // Upload local-only sessions.
+            let remoteSessionIds = Set(remoteSessions.map(\.id))
+            var sessionsToUpload: [CloudPlannedSession] = []
+            for local in allLocalSessions where !remoteSessionIds.contains(local.id) {
+                guard let plan = local.plan else { continue }
+                sessionsToUpload.append(makeCloudPlannedSession(from: local, plan: plan, userId: userId))
+            }
+            if !sessionsToUpload.isEmpty {
+                _ = try? await supabaseClient.database
+                    .from("planned_sessions")
+                    .upsert(sessionsToUpload)
+                    .execute()
+            }
+
+            // --- Adaptations ---
+            // Mirrors the plan/session merge: pull cloud, upsert local-only,
+            // newer-updated_at-wins. Adaptations are written by the edge
+            // function so most flow is download-only, but we keep upload paths
+            // so acknowledged_at flips can sync back when the user dismisses
+            // a banner offline.
+            await syncRunningPlanAdaptations(userId: userId, context: context)
+
+            try? context.save()
+            print("✅ Running plans synced (\(localPlansById.count) plans, \(localSessionsById.count) sessions)")
+        } catch {
+            print("❌ Running plans sync failed: \(error)")
+        }
+    }
+
+    /// Bidirectional sync of `running_plan_adaptations`.
+    /// Called as a tail step from `syncRunningPlans` so plans/sessions are
+    /// already up to date locally — adaptations reference plans by id.
+    @MainActor
+    private func syncRunningPlanAdaptations(userId: String, context: ModelContext) async {
+        do {
+            let remote: [CloudRunningPlanAdaptation] = try await supabaseClient.database
+                .from("running_plan_adaptations")
+                .select()
+                .eq("user_id", value: userId)
+                .execute()
+                .value
+
+            let descriptor = FetchDescriptor<RunningPlanAdaptation>()
+            let local = (try? context.fetch(descriptor)) ?? []
+            var localById: [UUID: RunningPlanAdaptation] = [:]
+            for a in local { localById[a.id] = a }
+
+            // Cloud → local merge (newer-updated_at-wins).
+            for cloud in remote {
+                if let existing = localById[cloud.id] {
+                    if cloud.updated_at > existing.updatedAt {
+                        applyCloudToLocal(cloud, local: existing)
+                    }
+                } else {
+                    let newLocal = makeLocalRunningPlanAdaptation(from: cloud)
+                    context.insert(newLocal)
+                    localById[newLocal.id] = newLocal
+                }
+            }
+
+            // Push acknowledged_at flips back to cloud. We only ever change
+            // that single column from the client — the audit fields are
+            // service-role only (locked down by trigger after the security
+            // tightening migration). Local-only INSERT rows shouldn't exist
+            // anymore: every adaptation is created server-side by the edge
+            // function and pulled into local via this same sync.
+            for a in local {
+                guard let cloud = remote.first(where: { $0.id == a.id }) else { continue }
+                guard a.updatedAt > cloud.updated_at,
+                      a.acknowledgedAt != cloud.acknowledged_at
+                else { continue }
+                await pushAcknowledgedAt(adaptation: a, userId: userId)
+            }
+        } catch {
+            print("⚠️ Adaptations sync failed (non-fatal): \(error)")
+        }
+    }
+
+    /// Mark an adaptation as read both locally and in the cloud. The local
+    /// flip happens immediately; the cloud update is best-effort.
+    @MainActor
+    func acknowledgeAdaptation(_ adaptation: RunningPlanAdaptation) async {
+        guard adaptation.acknowledgedAt == nil else { return }
+        adaptation.acknowledgedAt = Date()
+        adaptation.updatedAt = Date()
+
+        guard let session = try? await supabaseClient.auth.session else { return }
+        await pushAcknowledgedAt(
+            adaptation: adaptation,
+            userId: session.user.id.uuidString.lowercased()
+        )
+    }
+
+    /// Targeted UPDATE of just `acknowledged_at` (and the auto-bumped
+    /// `updated_at`). Used both by the dismiss flow and by sync. Sending
+    /// only this column avoids tripping the field-immutability trigger
+    /// on `running_plan_adaptations` — JSONB column round-trips can
+    /// produce false positives in `IS DISTINCT FROM` comparisons.
+    @MainActor
+    private func pushAcknowledgedAt(
+        adaptation: RunningPlanAdaptation,
+        userId: String
+    ) async {
+        struct AckPayload: Encodable {
+            let acknowledged_at: Date?
+        }
+        let payload = AckPayload(acknowledged_at: adaptation.acknowledgedAt)
+        do {
+            try await supabaseClient.database
+                .from("running_plan_adaptations")
+                .update(payload)
+                .eq("id", value: adaptation.id.uuidString)
+                .eq("user_id", value: userId)
+                .execute()
+        } catch {
+            print("⚠️ Failed to push acknowledged_at: \(error)")
+        }
+    }
+
+    @MainActor
+    private func makeCloudRunningPlanAdaptation(
+        from a: RunningPlanAdaptation,
+        userId: UUID
+    ) -> CloudRunningPlanAdaptation {
+        CloudRunningPlanAdaptation(
+            id: a.id,
+            user_id: userId,
+            plan_id: a.planId,
+            reason: a.reasonRaw,
+            summary: a.summary,
+            changes: a.changesJSON,
+            sessions_changed: a.sessionsChanged,
+            acknowledged_at: a.acknowledgedAt,
+            created_at: a.createdAt,
+            updated_at: a.updatedAt
+        )
+    }
+
+    @MainActor
+    private func makeLocalRunningPlanAdaptation(
+        from cloud: CloudRunningPlanAdaptation
+    ) -> RunningPlanAdaptation {
+        let a = RunningPlanAdaptation(
+            id: cloud.id,
+            userId: cloud.user_id.uuidString.lowercased(),
+            planId: cloud.plan_id,
+            summary: cloud.summary,
+            changesJSON: cloud.changes,
+            sessionsChanged: cloud.sessions_changed,
+            acknowledgedAt: cloud.acknowledged_at,
+            createdAt: cloud.created_at,
+            updatedAt: cloud.updated_at
+        )
+        a.reasonRaw = cloud.reason
+        return a
+    }
+
+    @MainActor
+    private func applyCloudToLocal(
+        _ cloud: CloudRunningPlanAdaptation,
+        local a: RunningPlanAdaptation
+    ) {
+        a.userId = cloud.user_id.uuidString.lowercased()
+        a.planId = cloud.plan_id
+        a.reasonRaw = cloud.reason
+        a.summary = cloud.summary
+        a.changesJSON = cloud.changes
+        a.sessionsChanged = cloud.sessions_changed
+        a.acknowledgedAt = cloud.acknowledged_at
+        a.createdAt = cloud.created_at
+        a.updatedAt = cloud.updated_at
+    }
+
+    /// Upload a single plan (and its sessions) immediately — e.g. right after
+    /// the generate-plan edge function returns a freshly-built plan.
+    func uploadRunningPlanImmediately(_ plan: RunningPlan) async {
+        guard let session = try? await supabaseClient.auth.session else {
+            print("❌ Cannot upload running plan: no active Supabase session")
+            return
+        }
+        let authUserId = session.user.id
+
+        let (planDTO, sessionDTOs) = await makeCloudRunningPlanBundle(from: plan, userId: authUserId)
+
+        do {
+            try await supabaseClient.database
+                .from("running_plans")
+                .upsert(planDTO)
+                .execute()
+
+            if !sessionDTOs.isEmpty {
+                try await supabaseClient.database
+                    .from("planned_sessions")
+                    .upsert(sessionDTOs)
+                    .execute()
+            }
+            print("✅ Running plan uploaded (\(sessionDTOs.count) sessions)")
+        } catch {
+            print("❌ Failed to upload running plan: \(error)")
+        }
+    }
+
+    /// Hard-delete a running plan from Supabase. The `planned_sessions` FK is
+    /// `ON DELETE CASCADE`, so the plan's sessions are dropped server-side
+    /// automatically — callers only need to forget the plan locally afterwards.
+    ///
+    /// Returns `true` on success. Callers should hold off on the local delete
+    /// until this returns true; otherwise the next `syncRunningPlans` will see
+    /// the plan still in cloud + missing locally and resurrect it.
+    @discardableResult
+    func deleteRunningPlanFromCloud(_ planId: UUID) async -> Bool {
+        guard (try? await supabaseClient.auth.session) != nil else {
+            print("❌ Cannot delete running plan: no active Supabase session")
+            return false
+        }
+        do {
+            try await supabaseClient.database
+                .from("running_plans")
+                .delete()
+                .eq("id", value: planId.uuidString)
+                .execute()
+            print("🗑️ Running plan deleted from cloud (id=\(planId))")
+            return true
+        } catch {
+            print("❌ Failed to delete running plan: \(error)")
+            return false
+        }
+    }
+
+    /// Upload a single session (e.g. when user marks it complete).
+    func uploadPlannedSessionImmediately(_ session: PlannedSession) async {
+        guard let authSession = try? await supabaseClient.auth.session else {
+            print("❌ Cannot upload planned session: no active Supabase session")
+            return
+        }
+        let authUserId = authSession.user.id
+
+        guard let dto = await makeSessionDTOIfPossible(session, userId: authUserId) else {
+            print("❌ Cannot upload planned session: missing plan relationship")
+            return
+        }
+        do {
+            try await supabaseClient.database
+                .from("planned_sessions")
+                .upsert(dto)
+                .execute()
+            print("✅ Planned session uploaded")
+        } catch {
+            print("❌ Failed to upload planned session: \(error)")
+        }
+    }
+
+    @MainActor
+    private func makeSessionDTOIfPossible(_ session: PlannedSession, userId: UUID) -> CloudPlannedSession? {
+        guard let plan = session.plan else { return nil }
+        return makeCloudPlannedSession(from: session, plan: plan, userId: userId)
+    }
+
+    // MARK: Running plan mapping helpers
+
+    @MainActor
+    private func makeCloudRunningPlanBundle(
+        from plan: RunningPlan,
+        userId: UUID
+    ) -> (CloudRunningPlan, [CloudPlannedSession]) {
+        let planDTO = makeCloudRunningPlan(from: plan, userId: userId)
+        let sessions = plan.sessions.map {
+            makeCloudPlannedSession(from: $0, plan: plan, userId: userId)
+        }
+        return (planDTO, sessions)
+    }
+
+    @MainActor
+    private func makeCloudRunningPlan(from p: RunningPlan, userId: String) -> CloudRunningPlan {
+        let uuid = UUID(uuidString: userId) ?? UUID()
+        return makeCloudRunningPlan(from: p, userId: uuid)
+    }
+
+    @MainActor
+    private func makeCloudRunningPlan(from p: RunningPlan, userId: UUID) -> CloudRunningPlan {
+        CloudRunningPlan(
+            id: p.id,
+            user_id: userId,
+            name: p.name,
+            goal_type: p.goalTypeRaw,
+            status: p.statusRaw,
+            start_date: p.startDate,
+            total_weeks: p.totalWeeks,
+            target_race_date: p.targetRaceDate,
+            target_race_distance: p.targetRaceDistanceRaw,
+            target_race_name: p.targetRaceName,
+            target_race_goal_time_seconds: p.targetRaceGoalTimeSeconds,
+            generation_source: p.generationSourceRaw,
+            generation_context: p.generationContextJSON,
+            model_version: p.modelVersion,
+            created_at: p.createdAt,
+            updated_at: p.updatedAt
+        )
+    }
+
+    @MainActor
+    private func makeCloudPlannedSession(
+        from s: PlannedSession,
+        plan: RunningPlan,
+        userId: String
+    ) -> CloudPlannedSession {
+        let uuid = UUID(uuidString: userId) ?? UUID()
+        return makeCloudPlannedSession(from: s, plan: plan, userId: uuid)
+    }
+
+    @MainActor
+    private func makeCloudPlannedSession(
+        from s: PlannedSession,
+        plan: RunningPlan,
+        userId: UUID
+    ) -> CloudPlannedSession {
+        CloudPlannedSession(
+            id: s.id,
+            user_id: userId,
+            plan_id: plan.id,
+            week_number: s.weekNumber,
+            scheduled_date: s.scheduledDate,
+            session_type: s.sessionTypeRaw,
+            target_distance_km: s.targetDistanceKm,
+            target_duration_minutes: s.targetDurationMinutes,
+            target_pace_seconds_per_km: s.targetPaceSecondsPerKm,
+            description: s.sessionDescription,
+            notes: s.notes,
+            completed_at: s.completedAt,
+            completed_distance_km: s.completedDistanceKm,
+            completed_duration_minutes: s.completedDurationMinutes,
+            completed_source: s.completedSource,
+            skipped: s.skipped,
+            created_at: s.createdAt,
+            updated_at: s.updatedAt
+        )
+    }
+
+    @MainActor
+    private func makeLocalRunningPlan(from cloud: CloudRunningPlan) -> RunningPlan {
+        let p = RunningPlan(
+            id: cloud.id,
+            userId: cloud.user_id.uuidString.lowercased(),
+            name: cloud.name,
+            goalType: RunningGoalType(rawValue: cloud.goal_type) ?? .generalFitness,
+            status: RunningPlanStatus(rawValue: cloud.status) ?? .active,
+            startDate: cloud.start_date,
+            totalWeeks: cloud.total_weeks,
+            targetRaceDate: cloud.target_race_date,
+            targetRaceDistance: cloud.target_race_distance.flatMap { RaceDistance(rawValue: $0) },
+            targetRaceName: cloud.target_race_name,
+            targetRaceGoalTimeSeconds: cloud.target_race_goal_time_seconds,
+            generationSource: RunningPlanGenerationSource(rawValue: cloud.generation_source) ?? .ai,
+            generationContextJSON: cloud.generation_context,
+            modelVersion: cloud.model_version,
+            createdAt: cloud.created_at,
+            updatedAt: cloud.updated_at
+        )
+        return p
+    }
+
+    @MainActor
+    private func makeLocalPlannedSession(
+        from cloud: CloudPlannedSession,
+        plan: RunningPlan
+    ) -> PlannedSession {
+        let s = PlannedSession(
+            id: cloud.id,
+            userId: cloud.user_id.uuidString.lowercased(),
+            weekNumber: cloud.week_number,
+            scheduledDate: cloud.scheduled_date,
+            sessionType: RunningSessionType(rawValue: cloud.session_type) ?? .easy,
+            targetDistanceKm: cloud.target_distance_km,
+            targetDurationMinutes: cloud.target_duration_minutes,
+            targetPaceSecondsPerKm: cloud.target_pace_seconds_per_km,
+            description: cloud.description,
+            notes: cloud.notes,
+            createdAt: cloud.created_at,
+            updatedAt: cloud.updated_at
+        )
+        s.plan = plan
+        s.completedAt = cloud.completed_at
+        s.completedDistanceKm = cloud.completed_distance_km
+        s.completedDurationMinutes = cloud.completed_duration_minutes
+        s.completedSource = cloud.completed_source
+        s.skipped = cloud.skipped
+        return s
+    }
+
+    @MainActor
+    private func applyCloudToLocal(_ cloud: CloudRunningPlan, local p: RunningPlan) {
+        p.name = cloud.name
+        p.goalTypeRaw = cloud.goal_type
+        p.statusRaw = cloud.status
+        p.startDate = cloud.start_date
+        p.totalWeeks = cloud.total_weeks
+        p.targetRaceDate = cloud.target_race_date
+        p.targetRaceDistanceRaw = cloud.target_race_distance
+        p.targetRaceName = cloud.target_race_name
+        p.targetRaceGoalTimeSeconds = cloud.target_race_goal_time_seconds
+        p.generationSourceRaw = cloud.generation_source
+        p.generationContextJSON = cloud.generation_context
+        p.modelVersion = cloud.model_version
+        p.createdAt = cloud.created_at
+        p.updatedAt = cloud.updated_at
+    }
+
+    @MainActor
+    private func applyCloudToLocal(_ cloud: CloudPlannedSession, local s: PlannedSession) {
+        s.weekNumber = cloud.week_number
+        s.scheduledDate = cloud.scheduled_date
+        s.sessionTypeRaw = cloud.session_type
+        s.targetDistanceKm = cloud.target_distance_km
+        s.targetDurationMinutes = cloud.target_duration_minutes
+        s.targetPaceSecondsPerKm = cloud.target_pace_seconds_per_km
+        s.sessionDescription = cloud.description
+        s.notes = cloud.notes
+        s.completedAt = cloud.completed_at
+        s.completedDistanceKm = cloud.completed_distance_km
+        s.completedDurationMinutes = cloud.completed_duration_minutes
+        s.completedSource = cloud.completed_source
+        s.skipped = cloud.skipped
+        s.updatedAt = cloud.updated_at
     }
 }

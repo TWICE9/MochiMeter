@@ -9,6 +9,9 @@ import Combine
 import GoogleSignIn
 import Auth
 import AppTrackingTransparency
+import os.signpost
+
+private let appSignposter = OSSignposter(subsystem: "com.yumo.perf", category: "YumoApp")
 
 // MARK: - Deep Link Manager
 @MainActor
@@ -17,13 +20,23 @@ class DeepLinkManager: ObservableObject {
 
     @Published var pendingPasswordResetURL: URL?
     @Published var shouldDismissAuthSheets = false
+    @Published var showScanner = false // New flag for QuickScan
 
     func handleURL(_ url: URL) {
         print("🔗 DeepLinkManager received URL:")
         print("   Full URL: \(url.absoluteString)")
-        print("   Scheme: \(url.scheme ?? "nil")")
-        print("   Host: \(url.host ?? "nil")")
 
+        // 1. Handle QuickScan (yumo://scan or similar)
+        if url.host == "scan" || url.absoluteString.contains("scan") {
+            print("📷 Detected QuickScan URL")
+            // Small delay to ensure view hierarchy is ready
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.showScanner = true
+            }
+            return
+        }
+
+        // 2. Handle Password Reset (mochimeter://reset-password)
         if url.scheme == "mochimeter" {
             let urlString = url.absoluteString.lowercased()
             if urlString.contains("reset-password") || url.host == "reset-password" {
@@ -55,11 +68,12 @@ class AppNotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotificati
 
         UNUserNotificationCenter.current().delegate = delegate
 
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
-            if granted {
-                print("🔔 Notification permission granted.")
-            } else if let error = error {
-                print("⚠️ Notification permission error:", error.localizedDescription)
+        // Register for remote push notifications if already authorized
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            if settings.authorizationStatus == .authorized {
+                DispatchQueue.main.async {
+                    application.registerForRemoteNotifications()
+                }
             }
         }
         
@@ -68,6 +82,10 @@ class AppNotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotificati
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             ATTrackingManager.requestTrackingAuthorization { status in
                 print("🆔 Tracking auth status: \(status.rawValue)")
+                // Initialise AdMob after ATT resolves so it knows the consent state.
+                DispatchQueue.main.async {
+                    AdManager.shared.initializeAds()
+                }
             }
         }
 
@@ -86,6 +104,20 @@ class AppNotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotificati
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         completionHandler([.banner, .sound])
+    }
+
+    // MARK: - Remote Notifications (APNs)
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        let token = deviceToken.map { String(format: "%02x", $0) }.joined()
+        print("📲 APNs device token: \(token)")
+        Task {
+            await DeviceTokenManager.shared.saveToken(token)
+        }
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        print("❌ APNs registration failed: \(error.localizedDescription)")
     }
 
     // Handle Google Sign-In callback URL
@@ -127,8 +159,8 @@ struct YumoApp: App {
     // Shared app-wide AuthManager instance
     @StateObject private var authManager = AuthManager.shared
 
-    // Superwall manager for premium subscriptions
-    @StateObject private var superwallManager = SuperwallManager.shared
+    // StoreKit manager for premium subscriptions
+    @StateObject private var storeKitManager = StoreKitManager.shared
 
     // Deep link manager
     @StateObject private var deepLinkManager = DeepLinkManager.shared
@@ -138,6 +170,12 @@ struct YumoApp: App {
     
     // Ad manager for AdMob
     @StateObject private var adManager = AdManager.shared
+
+    // Tab Router (Hoisted to App level for deep link access)
+    @StateObject private var tabRouter = TabRouter()
+
+    // Fasting manager global instance to prevent 1-second invalidations in MainTabView
+    @StateObject private var fastingManager = FastingManager()
 
     // Shared SwiftData container using App Group storage
     let container: ModelContainer = SharedModelContainer.create()
@@ -155,57 +193,124 @@ struct YumoApp: App {
                     ContentView()
                         .id(authManager.currentUser?.id)
                         .environmentObject(authManager)
-                        .environmentObject(superwallManager)
+                        .environmentObject(storeKitManager)
                         .environmentObject(deepLinkManager)
                         .environmentObject(themeManager)
                         .environmentObject(adManager)
+                        .environmentObject(tabRouter)
+                        .environmentObject(fastingManager)
                         .modelContainer(container)
-                        // Handle deep links at App level
-                        .onOpenURL { url in
-                            print("🔗 YumoApp onOpenURL received: \(url.absoluteString)")
-                            deepLinkManager.handleURL(url)
-                        }
+                        // Removed nested onOpenURL (moved to top level)
+                        .withTutorialOverlay() // Tutorial system
                         .transition(.opacity.animation(.easeInOut(duration: 0.4)))
                 } else {
                     LaunchScreen()
                         .transition(.opacity.animation(.easeInOut(duration: 0.4)))
                 }
             }
+            .scrollIndicators(.hidden)
+            // Handle deep links at the WindowGroup level to catch them during LaunchScreen
+            .onOpenURL { url in
+                print("🔗 YumoApp onOpenURL received: \(url.absoluteString)")
+                deepLinkManager.handleURL(url)
+            }
             // Initialize App Services
             .task {
-                // 1. Configure Superwall & AdMob (Synchronous, fast)
-                superwallManager.configure()
-                adManager.initializeAds()
-                
-                // 2. Async Initializations
-                // We run this sequentially to avoid Swift 6 concurrency issues with MainActor-isolated properties (like ModelContext)
-                
-                // Check premium status (Network)
-                await superwallManager.checkPremiumStatus()
-                
-                // Apply appearance (UI/MainActor)
+                let launchState = appSignposter.beginInterval("launchTask")
+                defer { appSignposter.endInterval("launchTask", launchState) }
+
+                // 1. Configure StoreKit (premium status already loaded from cache in StoreKitManager.init())
+                // AdMob init is deferred to the background task below — not needed on first frame.
+                storeKitManager.configure()
+
+                // 2. Essential startup tasks (must complete before showing app)
+                // Apply appearance (UI/MainActor) - fast, local DB
+                let appearanceState = appSignposter.beginInterval("applyUserAppearanceMode")
                 await applyUserAppearanceMode()
+                appSignposter.endInterval("applyUserAppearanceMode", appearanceState)
                 
-                // Sync cloud → device (Database/MainActor)
-                await CloudFoodSyncManager.shared.syncOnAppLaunch(context: container.mainContext)
-                
-                // Sync any pending AI analyses that completed while app was closed
-                await PendingAnalysisSync.shared.syncCompletedAnalyses(modelContext: container.mainContext)
-                
-                // 3. Background tasks (fire and forget)
-                Task {
-                    await CloudFoodSyncManager.shared.syncOncePerDay(context: container.mainContext)
+                // 3. Sync data BEFORE showing the home screen so it appears with fresh content.
+                // Running these during the launch screen prevents the ~1s post-launch re-render
+                // that was caused by FoodLogCreated notifications firing after the home screen appeared.
+                //
+                // Safety net: race the syncs against a 3-second timeout so a slow or offline
+                // network never leaves the user stuck on the launch screen. If the timeout wins,
+                // the syncs continue in the background task below and the home screen appears
+                // with cached/local data instead.
+                let mainContext = container.mainContext
+                let syncRaceState = appSignposter.beginInterval("launchSyncRace")
+                await withTaskGroup(of: Void.self) { group in
+                    // Task A: do the actual syncs
+                    group.addTask { @MainActor in
+                        let syncState = appSignposter.beginInterval("CloudFoodSyncManager.syncOnAppLaunch")
+                        await CloudFoodSyncManager.shared.syncOnAppLaunch(context: mainContext)
+                        appSignposter.endInterval("CloudFoodSyncManager.syncOnAppLaunch", syncState)
+
+                        let pendingState = appSignposter.beginInterval("PendingAnalysisSync.syncCompletedAnalyses")
+                        await PendingAnalysisSync.shared.syncCompletedAnalyses(modelContext: mainContext)
+                        appSignposter.endInterval("PendingAnalysisSync.syncCompletedAnalyses", pendingState)
+                    }
+                    // Task B: 1-second maximum wait — if sync is slow, launch screen no longer stalls;
+                    // remaining work continues in the post-ready background task below.
+                    group.addTask {
+                        try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    }
+                    // Whichever finishes first (sync or timeout) unblocks the launch screen
+                    await group.next()
+                    group.cancelAll()
                 }
-
-                // 4. Migration checks
-                await migrateWeeklyWeightChangeKg()
+                appSignposter.endInterval("launchSyncRace", syncRaceState)
                 
-                // 5. Artificial minimum delay to prevent jarring flash
-                try? await Task.sleep(nanoseconds: 1_200_000_000)
-
-                // 6. Signal app is ready
+                // 4. Signal app is ready - data is already fresh (or timed-out and will finish in background)
                 withAnimation {
                     isAppReady = true
+                }
+                
+                // 5. Truly background tasks AFTER app is shown (non-blocking, no UI impact)
+                Task {
+
+                    // Verify premium status in background (updates cache if changed)
+                    await storeKitManager.checkPremiumStatus()
+                    
+                    // Setup Fasting Manager
+                    await MainActor.run {
+                        fastingManager.setup(context: container.mainContext)
+                    }
+                    
+                    // Pre-warm HealthKit cache (runs silently if already authorized)
+                    await HealthKitManager.shared.prefetchAllData()
+                    
+                    // Start realtime polling for in-session AI analysis updates
+                    await PendingAnalysisSync.shared.startListening(modelContext: container.mainContext)
+                    
+                    // Daily sync
+                    await CloudFoodSyncManager.shared.syncOncePerDay(context: container.mainContext)
+
+                    // Running plan + logged runs cold-launch sync. Runs in the background so
+                    // it never blocks app start, but ensures multi-device users see plan/session
+                    // edits made elsewhere without having to sign out and back in.
+                    if let userId = authManager.currentUser?.id.uuidString.lowercased() {
+                        await CloudSyncManager.shared.syncRunningProfile(userId: userId, context: container.mainContext)
+                        await CloudSyncManager.shared.syncRunningPlans(userId: userId, context: container.mainContext)
+                        await FitnessService.shared.fetchRuns()
+
+                        // Phase 2 plan adaptation: passively check whether
+                        // the runner has fallen behind or pulled ahead of the
+                        // plan, and auto-adjust if so. Server enforces a 7-day
+                        // cooldown so this is safe to call on every launch.
+                        // Must run AFTER syncRunningPlans so the latest
+                        // session completion data is local.
+                        await RunningPlanAdaptationDetector.runIfNeeded(context: container.mainContext)
+
+                        // Refresh the rolling 14-day window of session-specific
+                        // reminders. Each launch nudges out anything completed
+                        // and adds the next-window-edge sessions. Runs after
+                        // adaptation so any modified sessions get fresh nudges.
+                        await RunningWorkoutReminderScheduler.refresh(context: container.mainContext)
+                    }
+
+                    // Migration checks
+                    await migrateWeeklyWeightChangeKg()
                 }
             }
         }
@@ -214,6 +319,13 @@ struct YumoApp: App {
                 print("🔄 App became active, checking for background analyses...")
                 Task {
                     await PendingAnalysisSync.shared.syncCompletedAnalyses(modelContext: container.mainContext)
+                    // Start realtime listening for instant updates while app is open
+                    await PendingAnalysisSync.shared.startListening(modelContext: container.mainContext)
+                }
+            } else if newPhase == .background {
+                // Stop realtime listening when app goes to background to save resources
+                Task {
+                    await PendingAnalysisSync.shared.stopListening()
                 }
             }
         }
@@ -235,8 +347,8 @@ struct YumoApp: App {
             case .dark: style = .dark
             }
             
-            // Sync with Superwall Manager so new windows inherit this
-            superwallManager.setAppearance(style)
+            // Sync with StoreKit Manager so new windows inherit this
+            storeKitManager.setAppearance(style)
 
             for window in windowScene.windows {
                 window.overrideUserInterfaceStyle = style

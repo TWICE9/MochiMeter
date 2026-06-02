@@ -3,11 +3,13 @@
 //  Yumo
 //
 //  Syncs completed background analyses to local database on app launch
+//  Also provides smart polling for quick updates while app is active
 //
 
 import Foundation
 import SwiftData
 import UIKit
+@preconcurrency import Supabase
 
 /// Syncs completed pending analyses to local database
 @MainActor
@@ -15,54 +17,147 @@ class PendingAnalysisSync {
     static let shared = PendingAnalysisSync()
     
     private var isSyncing = false
+    private var pollingTask: Task<Void, Never>?
+    private var isPolling = false
+    private weak var modelContext: ModelContext?
+    
+    /// Polling intervals - fast when analyzing, slow when idle
+    private let fastPollingInterval: TimeInterval = 1.0  // 1 second when items are analyzing
+    private let slowPollingInterval: TimeInterval = 10.0 // 10 seconds when idle
+
+    /// Stuck analysis recovery settings
+    private let stuckRetryTimeout: TimeInterval = 60    // Retry after 1 minute stuck
+    private let stuckGiveUpTimeout: TimeInterval = 180  // Give up after 3 minutes
     
     private init() {}
+    
+    // MARK: - Smart Polling
+    
+    /// Start smart polling for completed analyses
+    /// Polls fast (1s) when there are pending analyses, slow (10s) when idle
+    func startListening(modelContext: ModelContext) async {
+        guard !isPolling else { return }
+        
+        guard await UserSession.shared.getCurrentUserId() != nil else {
+            print("ℹ️ No user logged in, skipping analysis polling")
+            return
+        }
+        
+        self.modelContext = modelContext
+        isPolling = true
+        
+        print("📡 Starting smart polling for pending analyses...")
+        
+        // Create a polling task with adaptive interval
+        pollingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self = self, self.isPolling, let context = self.modelContext else { break }
+                
+                // Check if there are any items currently analyzing
+                let hasAnalyzingItems = self.hasAnalyzingItems(in: context)
+                
+                // Use fast polling when analyzing, slow when idle
+                let interval = hasAnalyzingItems ? self.fastPollingInterval : self.slowPollingInterval
+                
+                if hasAnalyzingItems {
+                    // Only log when actively polling
+                    // Check for completed analyses
+                    await self.syncCompletedAnalyses(modelContext: context)
+                }
+                
+                // Wait before next poll (adaptive interval)
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+            }
+            
+            print("📡 Polling stopped")
+        }
+        
+        print("✅ Smart analysis polling active (fast: \(fastPollingInterval)s, slow: \(slowPollingInterval)s)")
+    }
+    
+    /// Check if there are any items currently being analyzed
+    private func hasAnalyzingItems(in context: ModelContext) -> Bool {
+        do {
+            let descriptor = FetchDescriptor<LoggedFood>(
+                predicate: #Predicate<LoggedFood> { food in
+                    food.isAnalyzing == true
+                }
+            )
+            let count = try context.fetchCount(descriptor)
+            return count > 0
+        } catch {
+            return false
+        }
+    }
+    
+    /// Stop polling for updates
+    /// Call this when the app goes to background or the user logs out
+    func stopListening() async {
+        guard isPolling else { return }
+        
+        print("📡 Stopping analysis polling...")
+        
+        isPolling = false
+        pollingTask?.cancel()
+        pollingTask = nil
+        modelContext = nil
+        
+        print("✅ Analysis polling stopped")
+    }
+    
+    // MARK: - Manual Sync
     
     /// Call this on app launch to sync any completed background analyses
     func syncCompletedAnalyses(modelContext: ModelContext) async {
         guard !isSyncing else {
-            print("⏳ Sync already in progress, skipping")
-            return
+            return // Skip silently to avoid log noise
         }
         
         isSyncing = true
         defer { isSyncing = false }
         
         guard let userId = await UserSession.shared.getCurrentUserId() else {
-            print("ℹ️ No user logged in, skipping pending analysis sync")
-            return
+            return // Skip silently during polling
         }
         
-        print("🔄 Checking for completed background analyses...")
-        
         do {
-            // 1. Fetch completed analyses from Supabase
+            var syncedCount = 0
+            var failedCount = 0
+
+            // 1. Fetch and sync completed analyses from Supabase
             let completedAnalyses = try await PendingAnalysisManager.shared.fetchCompletedAnalyses(for: userId)
-            
-            if completedAnalyses.isEmpty {
-                print("✅ No pending analyses to sync")
-                return
+            if !completedAnalyses.isEmpty {
+                print("📥 Found \(completedAnalyses.count) completed analyses to sync")
+                for analysis in completedAnalyses {
+                    await syncSingleAnalysis(analysis, modelContext: modelContext)
+                    syncedCount += 1
+                }
             }
-            
-            print("📥 Found \(completedAnalyses.count) completed analyses to sync")
-            
-            // 2. For each completed analysis, update the local LoggedFood
-            for analysis in completedAnalyses {
-                await syncSingleAnalysis(analysis, modelContext: modelContext)
+
+            // 2. Check for stuck pending analyses and retry or fail them
+            let stuckAnalyses = try await PendingAnalysisManager.shared.fetchStuckAnalyses(for: userId, retryTimeout: stuckRetryTimeout, giveUpTimeout: stuckGiveUpTimeout)
+            if !stuckAnalyses.isEmpty {
+                print("⏰ Found \(stuckAnalyses.count) stuck analyses")
+                await handleStuckAnalyses(stuckAnalyses, modelContext: modelContext)
             }
-            
-            // 3. Also check for failed analyses
+
+            // 3. Check for failed analyses
             let failedAnalyses = try await PendingAnalysisManager.shared.fetchFailedAnalyses(for: userId)
             if !failedAnalyses.isEmpty {
                 print("⚠️ Found \(failedAnalyses.count) failed analyses")
                 await handleFailedAnalyses(failedAnalyses, modelContext: modelContext)
+                failedCount = failedAnalyses.count
             }
-            
-            // Notify UI to refresh
-            NotificationCenter.default.post(name: Notification.Name("FoodLogCreated"), object: nil)
-            
+
+            // Only notify the UI if something actually changed.
+            // Posting this notification unconditionally was causing the home screen
+            // to re-render (and reset scroll position) on every launch even with no new data.
+            if syncedCount > 0 || failedCount > 0 {
+                NotificationCenter.default.post(name: Notification.Name("FoodLogCreated"), object: nil)
+            }
+
         } catch {
-            print("❌ Failed to sync pending analyses: \(error)")
+            // Suppress error logs during polling to avoid noise
         }
     }
     
@@ -130,23 +225,68 @@ class PendingAnalysisSync {
             
             // Mark as synced in Supabase
             try await PendingAnalysisManager.shared.markAsSynced(analysisId: analysis.id)
-            
+
             print("✅ Synced analysis for: \(result.name)")
-            
-            // Haptic feedback
-            await MainActor.run {
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
-            }
             
         } catch {
             print("❌ Failed to sync analysis \(analysis.id): \(error)")
         }
     }
     
+    // MARK: - Stuck Analysis Recovery
+
+    private func handleStuckAnalyses(_ stuckAnalyses: [StuckAnalysis], modelContext: ModelContext) async {
+        for stuck in stuckAnalyses {
+            if !stuck.shouldGiveUp {
+                // Still within retry window — re-trigger the edge function
+                await PendingAnalysisManager.shared.retryAnalysis(
+                    analysisId: stuck.id,
+                    imagePath: stuck.imagePath
+                )
+            } else {
+                // Past give-up timeout — mark as failed
+                do {
+                    try await PendingAnalysisManager.shared.markAsFailed(
+                        analysisId: stuck.id,
+                        reason: "Analysis timed out"
+                    )
+                } catch {
+                    print("❌ Failed to mark analysis as failed: \(error)")
+                }
+
+                // Update the local food item to show failure
+                guard let localFoodIdString = stuck.localFoodId else { continue }
+                do {
+                    let descriptor = FetchDescriptor<LoggedFood>(
+                        predicate: #Predicate<LoggedFood> { food in
+                            food.isAnalyzing == true
+                        }
+                    )
+                    let analyzingFoods = try modelContext.fetch(descriptor)
+                    if let targetFood = analyzingFoods.first(where: { food in
+                        food.persistentModelID.hashValue.description == localFoodIdString ||
+                        food.id.uuidString == localFoodIdString
+                    }) {
+                        targetFood.name = "Analysis failed"
+                        targetFood.isAnalyzing = false
+                        targetFood.isAnalysisFailed = true
+                        try modelContext.save()
+                    }
+                } catch {
+                    print("❌ Failed to update local food for stuck analysis: \(error)")
+                }
+            }
+        }
+    }
+
     private func handleFailedAnalyses(_ failedAnalyses: [FailedAnalysis], modelContext: ModelContext) async {
         for failed in failedAnalyses {
-            guard let localFoodIdString = failed.localFoodId else { continue }
-            
+            guard let localFoodIdString = failed.localFoodId else {
+                // Orphaned failed row with no local food — consume it so it isn't re-fetched forever.
+                try? await PendingAnalysisManager.shared.markAsSynced(analysisId: failed.id)
+                continue
+            }
+
             do {
                 // Find and update the local food to show failure
                 let descriptor = FetchDescriptor<LoggedFood>(
@@ -154,21 +294,29 @@ class PendingAnalysisSync {
                         food.isAnalyzing == true
                     }
                 )
-                
+
                 let analyzingFoods = try modelContext.fetch(descriptor)
-                
+
                 if let targetFood = analyzingFoods.first(where: { food in
                     food.persistentModelID.hashValue.description == localFoodIdString ||
                     food.id.uuidString == localFoodIdString
                 }) {
                     targetFood.name = "Analysis failed"
                     targetFood.isAnalyzing = false
+                    targetFood.isAnalysisFailed = true
                     try modelContext.save()
                 }
-                
+
+                // Consume the row once the failure is reflected locally. Leaving it as
+                // `failed` lets it be re-applied on top of a later retry of the same food
+                // (and re-fetched on every poll), which is exactly what stuck the card on
+                // "Analysis failed" after topping up credits.
+                try? await PendingAnalysisManager.shared.markAsSynced(analysisId: failed.id)
+
             } catch {
                 print("❌ Failed to handle failed analysis: \(error)")
             }
         }
     }
+
 }

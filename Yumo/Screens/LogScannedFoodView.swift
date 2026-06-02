@@ -16,6 +16,8 @@ struct LogScannedFoodView: View {
     var onLogComplete: (() -> Void)? = nil
 
     @State private var servingAmount: Double = 1.0
+    @State private var showServingInput: Bool = false
+    @State private var servingInputText: String = ""
     @State private var selectedDate: Date = Date()
     @State private var showDatePicker: Bool = false
     @State private var editableCalories: Double = 0
@@ -133,10 +135,24 @@ struct LogScannedFoodView: View {
                                     .clipShape(Circle())
                             }
 
-                            Text("\(servingAmount, specifier: "%.1f")")
-                                .font(.headline)
-                                .foregroundColor(Color("AppTextPrimary"))
-                                .frame(minWidth: 40)
+                            Button {
+                                servingInputText = servingAmount.truncatingRemainder(dividingBy: 1) == 0
+                                    ? String(format: "%.0f", servingAmount)
+                                    : String(format: "%.1f", servingAmount)
+                                showServingInput = true
+                            } label: {
+                                Text("\(servingAmount, specifier: "%.1f")")
+                                    .font(.headline)
+                                    .foregroundColor(Color("AppTextPrimary"))
+                                    .frame(minWidth: 40)
+                                    .padding(.vertical, 4)
+                                    .padding(.horizontal, 4)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .stroke(Color("AppTextPrimary").opacity(0.15), lineWidth: 1)
+                                    )
+                            }
+                            .buttonStyle(.plain)
 
                             Button {
                                 servingAmount = InputValidation.capServingAmount(servingAmount + 0.5)
@@ -151,6 +167,34 @@ struct LogScannedFoodView: View {
                         }
                     }
                     .padding(.horizontal, 20)
+                    .padding(.bottom, 8)
+
+                    // Quick-select serving chips
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach([0.25, 0.5, 1.0, 1.5, 2.0], id: \.self) { amount in
+                                Button {
+                                    servingAmount = amount
+                                } label: {
+                                    Text(amount.truncatingRemainder(dividingBy: 1) == 0
+                                         ? String(format: "%.0f", amount)
+                                         : String(format: "%.1f", amount))
+                                        .font(.subheadline.weight(.medium))
+                                        .foregroundColor(servingAmount == amount ? .white : Color("AppTextPrimary"))
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 7)
+                                        .background(
+                                            Capsule()
+                                                .fill(servingAmount == amount
+                                                      ? Color("AppTextPrimary").opacity(0.8)
+                                                      : Color("AppTextPrimary").opacity(0.08))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                    }
                     .padding(.bottom, 20)
 
                     // Macro grid
@@ -298,6 +342,20 @@ struct LogScannedFoodView: View {
                 Task { await refreshData() }
             }
         }
+        .alert("Servings", isPresented: $showServingInput, actions: {
+            TextField("Amount", text: $servingInputText)
+                .keyboardType(.decimalPad)
+
+            Button("Cancel", role: .cancel) { }
+
+            Button("Done") {
+                if let value = Double(servingInputText), value > 0 {
+                    servingAmount = InputValidation.capServingAmount(value)
+                }
+            }
+        }, message: {
+            Text("Enter serving amount")
+        })
         .alert(editingMacro?.title ?? "Edit", isPresented: $showEditDialog, actions: {
             TextField("Value", text: $editValue)
                 .keyboardType(.decimalPad)

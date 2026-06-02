@@ -92,12 +92,12 @@ struct SearchScreen: View {
     @EnvironmentObject private var tabRouter: TabRouter
 
     @Query private var allCommonFoods: [CommonFood]
-    @Query private var userGoals: [UserGoals]
-    
+    @State private var loadedGoals: UserGoals?
+
     private var energyUnit: EnergyUnit {
-        userGoals.first?.energyUnit ?? .calories
+        loadedGoals?.energyUnit ?? .calories
     }
-    
+
     private func convertEnergy(_ kcal: Double) -> Double {
         energyUnit == .kilojoules ? kcal * 4.184 : kcal
     }
@@ -273,6 +273,7 @@ struct SearchScreen: View {
             .navigationTitle("Search")
             .navigationBarTitleDisplayMode(.inline)
             .task {
+                loadedGoals = await UserScopedQuery.fetchUserGoals(context: modelContext)
                 loadRecentSearches()
                 await refreshRecentScans()
                 // Focus search on appear

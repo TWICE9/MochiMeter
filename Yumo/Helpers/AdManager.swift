@@ -14,17 +14,20 @@ class AdManager: NSObject, ObservableObject {
     @Published var isAdEnabled: Bool = true
     
     // MARK: - Ad Unit IDs
-    // NOTE: Using production IDs as requested. 
-    // WARNING: Be careful not to generate invalid clicks during testing.
-    
-    static let bannerAdUnitID = "ca-app-pub-1465033379713828/3633193401"
-    static let reportsBannerAdUnitID = "ca-app-pub-1465033379713828/9647937415"
+    // NOTE: Using production IDs
     
     #if DEBUG
-    // Keeping test ID for interstitial in debug since no interstitial ID was provided
-    static let interstitialAdUnitID = "ca-app-pub-3940256099942544/4411468910"
+    // Google's "always-fill" test banner ID — production builds use the real IDs below.
+    // This is required because production ad units often have no test inventory.
+    static let bannerAdUnitID = "ca-app-pub-3940256099942544/2934735716"
+    static let reportsBannerAdUnitID = "ca-app-pub-3940256099942544/2934735716"
+    static let activityBannerAdUnitID = "ca-app-pub-3940256099942544/2934735716"
+    static let planBannerAdUnitID = "ca-app-pub-3940256099942544/2934735716"
     #else
-    static let interstitialAdUnitID = "YOUR_INTERSTITIAL_AD_UNIT_ID"
+    static let bannerAdUnitID = "ca-app-pub-1465033379713828/3633193401"
+    static let reportsBannerAdUnitID = "ca-app-pub-1465033379713828/9647937415"
+    static let activityBannerAdUnitID = "ca-app-pub-1465033379713828/1252080522"
+    static let planBannerAdUnitID = "ca-app-pub-1465033379713828/4315327752"
     #endif
     
     // MARK: - Initialization
@@ -34,6 +37,14 @@ class AdManager: NSObject, ObservableObject {
     
     /// Initialize AdMob SDK (call this in app startup)
     func initializeAds() {
+        #if DEBUG
+        // Dev devices need to be registered as test devices, otherwise Google
+        // returns "No ad to show". Hashes come from the AdMob SDK console log
+        // on first launch ("To get test ads on this device, set: ...").
+        MobileAds.shared.requestConfiguration.testDeviceIdentifiers = [
+            "fa7cefa1cf5af39a9713a2d43a7bc33b"
+        ]
+        #endif
         MobileAds.shared.start { status in
             print("📱 AdMob initialized")
         }
@@ -42,7 +53,7 @@ class AdManager: NSObject, ObservableObject {
     /// Check if ads should be shown for current user
     func shouldShowAds() -> Bool {
         // Don't show ads if user is subscribed
-        if SuperwallManager.shared.isPremium {
+        if StoreKitManager.shared.isPremium {
             return false
         }
         

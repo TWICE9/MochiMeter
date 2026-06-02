@@ -41,7 +41,7 @@ struct EarlyHealthKitPage: View {
                 .multilineTextAlignment(.center)
 
             // Description
-            Text("Connect Apple Health to automatically fill in your height, weight, and other details.")
+            Text("Allow access to Apple Health to automatically fill in your height, weight, and other details.")
                 .font(.body)
                 .foregroundStyle(secondaryText)
                 .multilineTextAlignment(.center)
@@ -72,49 +72,33 @@ struct EarlyHealthKitPage: View {
 
             Spacer()
 
-            VStack(spacing: 12) {
-                // Connect button
-                Button {
-                    Task {
-                        await connectHealthKit()
-                    }
-                } label: {
-                    HStack {
-                        if isLoading {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .black))
-                        } else {
-                            Image(systemName: "heart.fill")
-                            Text(dataLoaded ? "Connected ✓" : "Connect Apple Health")
+            // Connect button
+            Button {
+                Task {
+                    await connectHealthKit()
+                }
+            } label: {
+                HStack {
+                    if isLoading {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .black))
+                    } else {
+                        Text(dataLoaded ? "Connected ✓" : "Continue")
+                        if !dataLoaded {
+                            Image(systemName: "arrow.right")
                         }
                     }
-                    .font(.headline)
-                    .fontWeight(.bold)
-                    .foregroundColor(.black)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 56)
-                    .background(dataLoaded ? Color.green : Color("AppSecondaryAccent"))
-                    .cornerRadius(16)
                 }
-                .disabled(isLoading || flowManager.isNavigating)
-                .padding(.horizontal, 24)
-
-                // Continue/Skip button
-                Button {
-                    guard !flowManager.isNavigating else { return }
-                    flowManager.goNext()
-                } label: {
-                    Text(dataLoaded ? "Continue" : "Skip for Now")
-                        .font(.headline)
-                        .foregroundColor(dataLoaded ? .black : secondaryText)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .background(dataLoaded ? Color("AppSecondaryAccent") : Color.clear)
-                        .cornerRadius(16)
-                }
-                .disabled(flowManager.isNavigating)
-                .padding(.horizontal, 24)
+                .font(.headline)
+                .fontWeight(.bold)
+                .foregroundColor(.black)
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .background(dataLoaded ? Color.green : Color("AppSecondaryAccent"))
+                .cornerRadius(16)
             }
+            .disabled(isLoading || flowManager.isNavigating)
+            .padding(.horizontal, 24)
             .padding(.bottom, 30)
         }
     }
@@ -146,6 +130,12 @@ struct EarlyHealthKitPage: View {
             await MainActor.run {
                 var fields: [String] = []
                 
+                // Extract name from device
+                let extractedName = OnboardingFlowManager.extractNameFromDevice()
+                if extractedName != nil {
+                    fields.append("Name")
+                }
+                
                 if let weight = profile.weight, weight > 0 {
                     fields.append("Weight")
                 }
@@ -163,7 +153,8 @@ struct EarlyHealthKitPage: View {
                     weight: profile.weight,
                     height: profile.height,
                     dob: profile.dob,
-                    sex: profile.sex?.rawValue
+                    sex: profile.sex?.rawValue,
+                    name: extractedName
                 )
                 
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {

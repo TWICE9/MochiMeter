@@ -8,7 +8,7 @@ MochiMeter ("we", "our", or "us") is committed to protecting your privacy. This 
 
 Please read this Privacy Policy carefully. By using the App, you agree to the collection and use of information in accordance with this policy.
 
-For terms governing your use of the Website and App, see our Terms of Service: `TERMS_OF_SERVICE.md` (also published at https://mochimeter.com/terms/).
+For terms governing your use of the Website and App, see our Terms of Service: `TERMS_OF_SERVICE.md` (also published at https://mochimeter.com.au/terms/).
 
 ## Information We Collect
 
@@ -141,7 +141,7 @@ We do not sell your personal information.
 
 If you have questions about this Privacy Policy or your personal information, please contact us:
 
-**Email**: support@mochimeter.app
+**Email**: support@mochimeter.com.au
 
 **Response Time**: We aim to respond to all privacy-related inquiries within 30 days.
 

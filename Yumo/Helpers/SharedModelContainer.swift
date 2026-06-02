@@ -11,6 +11,7 @@ enum SharedModelContainer {
             LoggedFood.self,
             LoggedWater.self,
             LoggedWeight.self,
+            LoggedFitness.self,
             UserGoals.self,
             CommonFood.self,
             FastingLog.self,
@@ -18,7 +19,12 @@ enum SharedModelContainer {
             Reminder.self,
             CloudFood.self,
             SavedFood.self,
-            ShoppingItem.self
+            ShoppingItem.self,
+            PaceCalculation.self,
+            RunningProfile.self,
+            RunningPlan.self,
+            PlannedSession.self,
+            RunningPlanAdaptation.self
         ])
 
         // Attempt to load App Group directory

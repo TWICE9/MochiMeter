@@ -12,10 +12,10 @@ struct RecipeDetailView: View {
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject var tabRouter: TabRouter
     
-    @Query private var userGoals: [UserGoals]
-    
+    @State private var loadedGoals: UserGoals?
+
     private var energyUnit: EnergyUnit {
-        userGoals.first?.energyUnit ?? .calories
+        loadedGoals?.energyUnit ?? .calories
     }
     
     private func convertEnergy(_ kcal: Double) -> Double {
@@ -185,6 +185,9 @@ struct RecipeDetailView: View {
             Button("Great!", role: .cancel) { }
         } message: {
             Text("One serving of \(recipe.name) has been added to your daily log.")
+        }
+        .task {
+            loadedGoals = await UserScopedQuery.fetchUserGoals(context: modelContext)
         }
     }
     

@@ -12,10 +12,10 @@ struct SavedFoodsView: View {
     @EnvironmentObject var themeManager: ThemeManager
     
     @Query private var savedFoods: [SavedFood]
-    @Query private var userGoals: [UserGoals]
-    
+    @State private var loadedGoals: UserGoals?
+
     private var energyUnit: EnergyUnit {
-        userGoals.first?.energyUnit ?? .calories
+        loadedGoals?.energyUnit ?? .calories
     }
     
     init(userId: String) {
@@ -113,11 +113,12 @@ struct SavedFoodsView: View {
         .navigationTitle("Saved Foods")
         .navigationBarTitleDisplayMode(.large)
         .task {
+            loadedGoals = await UserScopedQuery.fetchUserGoals(context: modelContext)
             // Wait a minimum time to prevent flashing if sync is too fast
             let delayTask = Task { try? await Task.sleep(nanoseconds: 700_000_000) }
             await syncSavedFoods()
             _ = await delayTask.value
-            
+
             withAnimation {
                 isLoading = false
             }

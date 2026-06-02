@@ -141,6 +141,27 @@ actor PendingAnalysisManager {
         }
     }
     
+    /// Resolves (marks as synced) every existing analysis row for a given local food.
+    ///
+    /// Call this before submitting a fresh analysis (e.g. a retry) so a stale `failed`
+    /// row — or an orphaned `pending` one — for the same food can't be re-fetched by the
+    /// sync poller and stamped back onto the card, clobbering the new attempt. Best-effort:
+    /// a network failure here just falls back to the previous (buggy-but-recoverable)
+    /// behaviour rather than blocking the retry.
+    func resolvePriorAnalyses(localFoodId: String, userId: String) async {
+        do {
+            try await supabase.database
+                .from("pending_analyses")
+                .update(["status": "synced"])
+                .eq("user_id", value: userId)
+                .eq("local_food_id", value: localFoodId)
+                .execute()
+            print("🧹 Resolved prior analyses for food: \(localFoodId)")
+        } catch {
+            print("⚠️ Failed to resolve prior analyses for \(localFoodId): \(error)")
+        }
+    }
+
     /// Marks an analysis as synced (no longer pending)
     func markAsSynced(analysisId: String) async throws {
         try await supabase.database
@@ -174,6 +195,61 @@ actor PendingAnalysisManager {
         }
     }
     
+    // MARK: - Stuck Analysis Recovery
+
+    /// Fetches analyses that have been stuck in "pending" status for too long
+    /// - Parameters:
+    ///   - userId: The user's ID
+    ///   - retryTimeout: How long before a pending analysis is considered stuck and retried (default 2 min)
+    ///   - giveUpTimeout: How long before giving up entirely and marking as failed (default 10 min)
+    func fetchStuckAnalyses(for userId: String, retryTimeout: TimeInterval = 120, giveUpTimeout: TimeInterval = 600) async throws -> [StuckAnalysis] {
+        let response = try await supabase.database
+            .from("pending_analyses")
+            .select()
+            .eq("user_id", value: userId)
+            .eq("status", value: "pending")
+            .execute()
+
+        let decoder = JSONDecoder()
+        let rows = try decoder.decode([StuckAnalysisRow].self, from: response.data)
+
+        let retryCutoff = Date().addingTimeInterval(-retryTimeout)
+        let giveUpCutoff = Date().addingTimeInterval(-giveUpTimeout)
+        let formatter = ISO8601DateFormatter()
+
+        return rows.compactMap { row in
+            guard let createdDate = formatter.date(from: row.created_at),
+                  createdDate < retryCutoff else { return nil }
+            return StuckAnalysis(
+                id: row.id,
+                localFoodId: row.local_food_id,
+                imagePath: row.image_path,
+                createdAt: row.created_at,
+                shouldGiveUp: createdDate < giveUpCutoff
+            )
+        }
+    }
+
+    /// Retries a stuck analysis by re-triggering the edge function
+    func retryAnalysis(analysisId: String, imagePath: String) async {
+        print("🔄 Retrying analysis \(analysisId)")
+        await triggerAnalysis(analysisId: analysisId, imagePath: imagePath)
+    }
+
+    /// Marks a stuck analysis as permanently failed
+    func markAsFailed(analysisId: String, reason: String) async throws {
+        try await supabase.database
+            .from("pending_analyses")
+            .update([
+                "status": "failed",
+                "error_message": reason
+            ])
+            .eq("id", value: analysisId)
+            .execute()
+
+        print("❌ Analysis \(analysisId) marked as failed: \(reason)")
+    }
+
     /// Deletes a failed analysis and its image
     func deleteFailedAnalysis(analysisId: String, imagePath: String) async throws {
         // Delete from storage
@@ -229,6 +305,21 @@ struct CompletedAnalysis: Sendable {
     let localFoodId: String?
     let result: AnalysisResultJSON?
     let completedAt: String?
+}
+
+struct StuckAnalysisRow: Codable, Sendable {
+    let id: String
+    let local_food_id: String?
+    let image_path: String
+    let created_at: String
+}
+
+struct StuckAnalysis: Sendable {
+    let id: String
+    let localFoodId: String?
+    let imagePath: String
+    let createdAt: String
+    let shouldGiveUp: Bool  // true if past the give-up timeout
 }
 
 struct FailedAnalysisRow: Codable, Sendable {

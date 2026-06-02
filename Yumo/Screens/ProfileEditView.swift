@@ -520,6 +520,12 @@ struct ProfileEditView: View {
         goals.dailyCarbs = calculatedMacros.carbs
         goals.dailyFat = calculatedMacros.fat
 
+        // Persist changes to disk
+        try? modelContext.save()
+
+        // Notify home screen to refresh with new goals
+        NotificationCenter.default.post(name: Notification.Name("GoalsUpdated"), object: nil)
+
         // Sync goals to cloud
         syncGoalsToCloud()
 
@@ -529,13 +535,18 @@ struct ProfileEditView: View {
     // MARK: - Sync to Cloud
 
     private func syncGoalsToCloud() {
-        guard let userId = goals.userId else {
-            print("⚠️ No userId set, skipping goals sync")
-            return
-        }
-
         Task {
-            await CloudSyncManager.shared.uploadUserGoalsImmediately(goals, userId: userId)
+            guard let sessionUserId = await UserSession.shared.getCurrentUserId(), !sessionUserId.isEmpty else {
+                print("⚠️ No userId found in session, skipping goals sync")
+                return
+            }
+            
+            // Ensure goals has the correct userId locally too before syncing
+            if goals.userId == nil {
+                goals.userId = sessionUserId
+            }
+            
+            await CloudSyncManager.shared.uploadUserGoalsImmediately(goals, userId: sessionUserId)
         }
     }
 

@@ -41,37 +41,77 @@ struct FoodLogDetailView: View {
         colorScheme == .dark ? Color.white.opacity(0.1) : Color.black.opacity(0.06)
     }
 
+    // Matches HomeScreen._getFoodIcon so the placeholder banner uses the same
+    // SF Symbol shown next to the item in the recent logs list.
     private var placeholderFoodIcon: String {
-        let icons = ["food-icon-1", "food-icon-2", "food-icon-3", "food-icon-4", "food-icon-5"]
-        let index = abs(log.name.hashValue) % icons.count
-        return icons[index]
+        let lowerName = log.name.lowercased()
+
+        if lowerName.contains("egg") { return "oval.portrait.fill" }
+        if lowerName.contains("fish") || lowerName.contains("tuna") || lowerName.contains("salmon") || lowerName.contains("cod") || lowerName.contains("shrimp") || lowerName.contains("prawn") { return "fish.fill" }
+        if lowerName.contains("milk") || lowerName.contains("dairy") || lowerName.contains("whey") || lowerName.contains("cheese") { return "refrigerator.fill" }
+        if lowerName.contains("bread") || lowerName.contains("toast") || lowerName.contains("bagel") || lowerName.contains("sandwich") || lowerName.contains("wrap") || lowerName.contains("burger") || lowerName.contains("pizza") || lowerName.contains("potato") || lowerName.contains("fries") { return "takeoutbag.and.cup.and.straw.fill" }
+        if lowerName.contains("salad") || lowerName.contains("lettuce") { return "leaf.fill" }
+        if lowerName.contains("apple") || lowerName.contains("banana") || lowerName.contains("orange") || lowerName.contains("citrus") || lowerName.contains("berry") || lowerName.contains("strawberry") || lowerName.contains("blueberry") || lowerName.contains("watermelon") { return "carrot.fill" }
+        if lowerName.contains("water") || lowerName.contains("drink") || lowerName.contains("honey") || lowerName.contains("syrup") { return "drop.fill" }
+        if lowerName.contains("coffee") || lowerName.contains("espresso") || lowerName.contains("latte") { return "cup.and.saucer.fill" }
+
+        let teaTestString = lowerName.replacingOccurrences(of: "tea spoon", with: "")
+        let words = teaTestString.components(separatedBy: CharacterSet.alphanumerics.inverted)
+        if words.contains("tea") || words.contains("teas") { return "mug.fill" }
+
+        if lowerName.contains("chocolate") || lowerName.contains("candy") || lowerName.contains("sweet") || lowerName.contains("ice cream") || lowerName.contains("dessert") || lowerName.contains("cookie") || lowerName.contains("biscuit") || lowerName.contains("cake") || lowerName.contains("muffin") { return "birthday.cake.fill" }
+
+        return "fork.knife"
     }
 
     @State private var showingDeleteConfirmation = false
     @State private var showEdit = false
     @State private var showMacroEditor = false
     @State private var macroToEdit: MacroType?
-    @State private var offset1: CGSize = .zero
-    @State private var offset2: CGSize = .zero
     @State private var displayImage: UIImage?
     @State private var isLoadingImage = false
     @State private var showFixSheet = false
     @State private var isFixing = false
     @State private var fixError: String?
     @State private var isNameExpanded = false
-    @ObservedObject private var superwallManager = SuperwallManager.shared
+    @ObservedObject private var storeKitManager = StoreKitManager.shared
+    @State private var showPaywall = false
     @EnvironmentObject var themeManager: ThemeManager
     @EnvironmentObject var authManager: AuthManager
     
     @State private var showSavedFeedback = false
-    
+    @State private var savedToastMessage = "Food Saved!"
+    @State private var savedToastIcon = "star.fill"
+    @State private var savedToastIconColor: Color = .yellow
+
+    // All SavedFoods — filtered in `matchingSavedFood` for the current user and log.
+    @Query private var allSavedFoods: [SavedFood]
+
+    private var currentSaveUserId: String {
+        authManager.currentUser?.id.uuidString.lowercased() ?? log.userId ?? "anonymous"
+    }
+
+    private var matchingSavedFood: SavedFood? {
+        let uid = currentSaveUserId
+        return allSavedFoods.first { food in
+            guard food.userId == uid else { return false }
+            if let logBarcode = log.barcode, !logBarcode.isEmpty,
+               let foodBarcode = food.barcode, !foodBarcode.isEmpty {
+                return foodBarcode == logBarcode
+            }
+            return food.foodName == log.name && food.brand == log.brand
+        }
+    }
+
+    private var isAlreadySaved: Bool { matchingSavedFood != nil }
+
     // Ingredient editor state
     @State private var showIngredientEditor = false
     @State private var ingredientToEdit: (name: String, calories: Double)?
 
     var body: some View {
         ZStack {
-            _buildDynamicBackground()
+            backgroundColor.ignoresSafeArea()
 
             ScrollView {
                 VStack(spacing: 12) {
@@ -83,10 +123,10 @@ struct FoodLogDetailView: View {
                     // Fix Result Button (only for AI-scanned items)
                     if log.brand == "AI Analyzed" || log.aiConfidence != nil {
                         Button {
-                            if superwallManager.isPremium {
+                            if storeKitManager.isPremium {
                                 showFixSheet = true
                             } else {
-                                superwallManager.showPaywall()
+                                showPaywall = true
                             }
                         } label: {
                             HStack {
@@ -169,10 +209,33 @@ struct FoodLogDetailView: View {
                     Spacer(minLength: 60)
                 }
                 .padding(.bottom, 80)
+                // Hard-clamp content width to ScrollView container.
+                // Prevents any child's intrinsic width from inflating
+                // the content width and unlocking horizontal bounce.
+                .containerRelativeFrame(.horizontal)
             }
             .scrollContentBackground(.hidden)
+            // Disable horizontal rubber-band bounce. Even with the
+            // ScrollView defaulting to vertical-only, iOS can still
+            // allow elastic side-to-side motion if anything in the
+            // layout reports a wider intrinsic size than the viewport
+            // (which can happen with `.scaledToFill` images, AI
+            // ingredient breakdowns, or just stray 1-2pt overshoots).
+            // `.basedOnSize` only bounces on axes where content
+            // actually overflows.
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             .onAppear {
                 Task { await loadImageIfNeeded() }
+                // Kill the nav bar's hairline/shadow so the transparent top
+                // edge looks clean. `.toolbarBackground(.hidden)` hides the
+                // fill but UIKit still draws a separator unless shadowColor
+                // is explicitly cleared on both appearances.
+                let appearance = UINavigationBarAppearance()
+                appearance.configureWithTransparentBackground()
+                appearance.shadowColor = .clear
+                UINavigationBar.appearance().standardAppearance = appearance
+                UINavigationBar.appearance().scrollEdgeAppearance = appearance
+                UINavigationBar.appearance().compactAppearance = appearance
             }
         }
         .navigationBarBackButtonHidden(false)
@@ -216,6 +279,9 @@ struct FoodLogDetailView: View {
                 }
             }
         }
+        .sheet(isPresented: $showPaywall) {
+            PaywallView(trigger: "fix_ai_result")
+        }
         .ignoresSafeArea(edges: .top)
         .alert("Delete this log?", isPresented: $showingDeleteConfirmation) {
             Button("Delete Log", role: .destructive) {
@@ -228,10 +294,10 @@ struct FoodLogDetailView: View {
         .overlay(alignment: .top) {
             if showSavedFeedback {
                 HStack(spacing: 12) {
-                    Image(systemName: "star.fill")
-                        .foregroundStyle(.yellow)
+                    Image(systemName: savedToastIcon)
+                        .foregroundStyle(savedToastIconColor)
                         .font(.title3)
-                    Text("Food Saved!")
+                    Text(savedToastMessage)
                         .font(.headline)
                         .foregroundStyle(adaptiveTextColor)
                 }
@@ -295,17 +361,85 @@ struct FoodLogDetailView: View {
         }
         
         UINotificationFeedbackGenerator().notificationOccurred(.success)
-        
+
+        savedToastMessage = "Food Saved!"
+        savedToastIcon = "star.fill"
+        savedToastIconColor = .yellow
         withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
             showSavedFeedback = true
         }
-        
+
         // Hide after delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             withAnimation {
                 showSavedFeedback = false
             }
         }
+    }
+
+    private func unsaveFood(_ food: SavedFood) {
+        let foodId = food.id.uuidString.lowercased()
+        modelContext.delete(food)
+        try? modelContext.save()
+
+        if let userId = authManager.currentUser?.id {
+            Task {
+                await SavedFoodsSync.deleteSavedFood(foodId: foodId, userId: userId.uuidString.lowercased())
+            }
+        }
+
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+
+        savedToastMessage = "Removed from Saved"
+        savedToastIcon = "star.slash"
+        savedToastIconColor = adaptiveSecondaryTextColor
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+            showSavedFeedback = true
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            withAnimation {
+                showSavedFeedback = false
+            }
+        }
+    }
+
+    private func logAgainToday() {
+        let newItem = LoggedFood(
+            name: log.name,
+            timestamp: Date(),
+            servingSizeDescription: log.servingSizeDescription,
+            servingAmount: log.servingAmount,
+            caloriesPerServing: log.caloriesPerServing,
+            proteinPerServing: log.proteinPerServing,
+            carbsPerServing: log.carbsPerServing,
+            fatPerServing: log.fatPerServing,
+            fiberPerServing: log.fiberPerServing,
+            sugarPerServing: log.sugarPerServing,
+            saltPerServing: log.saltPerServing,
+            potassiumPerServing: log.potassiumPerServing,
+            barcode: log.barcode,
+            brand: log.brand,
+            isHalal: log.isHalal,
+            photoData: log.photoData,
+            aiIngredients: log.aiIngredients
+        )
+        modelContext.insert(newItem)
+        try? modelContext.save()
+
+        WidgetCenter.shared.reloadAllTimelines()
+        NotificationCenter.default.post(name: Notification.Name("FoodLogCreated"), object: nil)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        AnalyticsManager.shared.trackFoodLogged(name: log.name, calories: log.totalCalories, source: .barcode)
+
+        if let userId = authManager.currentUser?.id.uuidString.lowercased() {
+            Task.detached(priority: .background) {
+                await MainActor.run { newItem.userId = userId }
+                await CloudSyncManager.shared.uploadFoodLogImmediately(newItem, userId: userId)
+            }
+        }
+
+        dismiss()
     }
 
     // MARK: - AI Fix Helpers
@@ -394,6 +528,14 @@ struct FoodLogDetailView: View {
                     .scaledToFill()
                     .frame(maxWidth: .infinity)
                     .frame(height: 500)
+                    // `scaledToFill` can extend past the frame in either
+                    // axis. `clipShape` below only clips the *render* — the
+                    // layout-reported size still includes the overflow,
+                    // which makes the parent ScrollView think it has
+                    // horizontal content and enables side-scrolling. The
+                    // explicit `.clipped()` constrains the reported size
+                    // to the frame so vertical-only scroll behaves.
+                    .clipped()
                     .clipShape(
                         UnevenRoundedRectangle(
                             topLeadingRadius: 0,
@@ -403,9 +545,61 @@ struct FoodLogDetailView: View {
                         )
                     )
                     .ignoresSafeArea(edges: .top)
+                    // Stretchy header — same pattern as RunDetailView's
+                    // map. On overscroll-at-top, scale the image upward
+                    // from its bottom anchor so it fills the bounce gap
+                    // instead of revealing the page background.
+                    .visualEffect { content, proxy in
+                        let minY = proxy.frame(in: .scrollView(axis: .vertical)).minY
+                        let stretch = max(0, minY)
+                        let scale = 1 + (stretch / 500)
+                        return content.scaleEffect(
+                            x: scale,
+                            y: scale,
+                            anchor: .bottom
+                        )
+                    }
             } else {
-                // Add top spacing for safe area when no image
-                Spacer().frame(height: 100)
+                // Decorative placeholder banner when no photo is available.
+                // Uses an opaque base so the animated background orbs don't
+                // bleed through as soft shadows behind the gradient tint.
+                ZStack {
+                    backgroundColor
+
+                    LinearGradient(
+                        colors: themeManager.currentTheme.buttonGradient(for: colorScheme).map { $0.opacity(colorScheme == .dark ? 0.22 : 0.14) },
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+
+                    Image(systemName: placeholderFoodIcon)
+                        .font(.system(size: 80, weight: .semibold))
+                        .foregroundStyle(Color("AppPrimaryAccent"))
+                        .padding(.top, 40)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 240)
+                .clipShape(
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: 0,
+                        bottomLeadingRadius: 24,
+                        bottomTrailingRadius: 24,
+                        topTrailingRadius: 0
+                    )
+                )
+                .ignoresSafeArea(edges: .top)
+                // Stretchy header for the placeholder banner case.
+                // Same scale-from-bottom-anchor trick as the photo case.
+                .visualEffect { content, proxy in
+                    let minY = proxy.frame(in: .scrollView(axis: .vertical)).minY
+                    let stretch = max(0, minY)
+                    let scale = 1 + (stretch / 240)
+                    return content.scaleEffect(
+                        x: scale,
+                        y: scale,
+                        anchor: .bottom
+                    )
+                }
             }
 
             // All details below the image
@@ -469,14 +663,23 @@ struct FoodLogDetailView: View {
                         }
                         
                         Button {
-                            saveFood()
+                            if let matched = matchingSavedFood {
+                                unsaveFood(matched)
+                            } else {
+                                saveFood()
+                            }
                         } label: {
-                            Image(systemName: "star")
+                            Image(systemName: isAlreadySaved ? "star.fill" : "star")
                                 .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(Color("AppTextPrimary")) // Could change to yellow if checked
+                                .foregroundStyle(isAlreadySaved ? .yellow : Color("AppTextPrimary"))
                                 .frame(width: 40, height: 40)
                                 .background(.ultraThinMaterial)
                                 .clipShape(Circle())
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.yellow.opacity(isAlreadySaved ? 0.6 : 0), lineWidth: 1.5)
+                                )
+                                .animation(.easeInOut(duration: 0.2), value: isAlreadySaved)
                         }
 
                         Button {
@@ -490,6 +693,36 @@ struct FoodLogDetailView: View {
                                 .clipShape(Circle())
                         }
                     }
+                }
+
+                if !Calendar.current.isDateInToday(log.timestamp) {
+                    Button {
+                        logAgainToday()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.system(size: 13, weight: .semibold))
+                            Text("Log again today")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .foregroundStyle(Color("AppTextPrimary"))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background(
+                            Capsule().fill(
+                                LinearGradient(
+                                    colors: themeManager.currentTheme.buttonGradient(for: colorScheme),
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                ).opacity(0.25)
+                            )
+                        )
+                        .overlay(
+                            Capsule().stroke(Color("AppPrimaryAccent").opacity(0.4), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 4)
                 }
 
                 if log.isHalal {
@@ -644,17 +877,23 @@ struct FoodLogDetailView: View {
                                 .foregroundStyle(adaptiveSecondaryTextColor.opacity(0.5))
                         }
                         
-                        // Progress bar for visual representation
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(cardBackgroundColor)
-                                    .frame(height: 6)
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(Color("AppPrimaryAccent").opacity(0.7))
-                                    .frame(width: geo.size.width * min(percentage / 100, 1.0), height: 6)
-                            }
+                        // Progress bar without GeometryReader. Track fills
+                        // available width; the colored fill scales from
+                        // the leading edge. GeometryReader inside a
+                        // ScrollView tends to report unbounded widths
+                        // during layout passes which can let the parent
+                        // ScrollView's content width exceed the viewport
+                        // and unlock horizontal panning.
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(cardBackgroundColor)
+                                .frame(height: 6)
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Color("AppPrimaryAccent").opacity(0.7))
+                                .frame(height: 6)
+                                .scaleEffect(x: max(0, min(percentage / 100, 1.0)), y: 1, anchor: .leading)
                         }
+                        .frame(maxWidth: .infinity)
                         .frame(height: 6)
                     }
                     .contentShape(Rectangle())
@@ -672,19 +911,6 @@ struct FoodLogDetailView: View {
         }
     }
     
-    @ViewBuilder
-    private func _buildDynamicBackground() -> some View {
-        ZStack {
-            backgroundColor.ignoresSafeArea()
-            RadialGradient(gradient: Gradient(colors: [Color("AppSecondaryAccent").opacity(colorScheme == .dark ? 0.3 : 0.2), .clear]), center: .topLeading, startRadius: 50, endRadius: 450)
-                .offset(offset1).offset(x: -150, y: -150).ignoresSafeArea()
-            RadialGradient(gradient: Gradient(colors: [Color("AppPrimaryAccent").opacity(colorScheme == .dark ? 0.4 : 0.25), .clear]), center: .bottomTrailing, startRadius: 100, endRadius: 500)
-                .offset(offset2).offset(x: 100, y: 150).ignoresSafeArea()
-        }
-        .blur(radius: 60)
-        .onAppear { animateOrbs() }
-    }
-
     private func convertEnergy(_ kcal: Double) -> Double {
         goals.energyUnit == .kilojoules ? kcal * 4.184 : kcal
     }
@@ -745,15 +971,6 @@ struct FoodLogDetailView: View {
         }
     }
     
-    private func animateOrbs() {
-        withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
-            offset1 = CGSize(width: 80, height: 60)
-        }
-        withAnimation(.easeInOut(duration: 10).repeatForever(autoreverses: true)) {
-            offset2 = CGSize(width: -100, height: -70)
-        }
-    }
-
     private func confidenceColor(for confidence: String) -> Color {
         switch confidence.lowercased() {
         case "high":

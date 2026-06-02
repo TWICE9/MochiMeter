@@ -7,6 +7,7 @@ import Auth
 import AuthenticationServices
 import UIKit
 import GoogleSignIn
+import HealthKit
 
 struct SettingsScreen: View {
 
@@ -15,7 +16,7 @@ struct SettingsScreen: View {
     @EnvironmentObject var authManager: AuthManager
     @EnvironmentObject var fastingManager: FastingManager
 
-    @EnvironmentObject var superwallManager: SuperwallManager
+    @EnvironmentObject var storeKitManager: StoreKitManager
     @EnvironmentObject var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
 
@@ -250,378 +251,19 @@ struct SettingsScreen: View {
                                                 .cornerRadius(12)
                                             }
                                             
-                                            Divider()
-                                                .background(cardBorderColor)
-                                        }
 
-                                        // Edit Profile
-                                        NavigationLink {
-                                            ProfileEditView(goals: goals)
-                                        } label: {
-                                            HStack {
-                                                Image(systemName: "person.fill")
-                                                Text("Edit My Profile")
-                                                Spacer()
-                                                Image(systemName: "chevron.right")
                                             }
-                                            .font(.headline)
-                                            .foregroundStyle(primaryTextColor)
-                                            .padding(.vertical, 8)
-                                        }
-                                        .buttonStyle(.plain)
 
-                                        Divider()
-                                            .background(cardBorderColor)
-
-                                        // Nutrition Goals
-                                        NavigationLink {
-                                            NutritionGoalsView(goals: goals)
-                                        } label: {
-                                            HStack {
-                                                Image(systemName: "chart.bar.fill")
-                                                Text("Nutrition Goals")
-                                                Spacer()
-                                                Image(systemName: "chevron.right")
-                                            }
-                                            .font(.headline)
-                                            .foregroundStyle(primaryTextColor)
-                                            .padding(.vertical, 8)
-                                        }
-                                        .buttonStyle(.plain)
                                     }
                                 }
                                 .padding(.horizontal, 24)
                             }
 
-
-                        // MARK: - APPEARANCE & THEME
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("Appearance")
-                                .font(.title3).bold()
-                                .foregroundStyle(primaryTextColor)
-                                .padding(.horizontal, 24)
-
-                            FrostedGlassContainer {
-                                VStack(spacing: 20) {
-                                    // Light/Dark Mode Picker
-                                    VStack(alignment: .leading, spacing: 12) {
-                                        Text("Color Scheme")
-                                            .font(.headline)
-                                            .foregroundStyle(primaryTextColor)
-                                        
-                                        Picker("Appearance", selection: $bindableGoals.appearanceMode) {
-                                            ForEach(AppearanceMode.allCases, id: \.self) { mode in
-                                                Text(mode.rawValue).tag(mode)
-                                            }
-                                        }
-                                        .pickerStyle(.segmented)
-                                        .onChange(of: bindableGoals.appearanceMode) { _, newMode in
-                                            applyAppearanceMode(newMode)
-                                        }
-
-                                        Text("Choose how MochiMeter looks. System follows your device settings.")
-                                            .font(.caption)
-                                            .foregroundStyle(secondaryTextColor)
-                                    }
-                                    
-                                    Divider()
-                                        .background(cardBorderColor)
-                                    
-                                    // Unit System Picker
-                                    VStack(alignment: .leading, spacing: 12) {
-                                        Text("Measurement Units")
-                                            .font(.headline)
-                                            .foregroundStyle(primaryTextColor)
-                                        
-                                        Picker("Units", selection: $bindableGoals.unitSystem) {
-                                            ForEach(UnitSystem.allCases, id: \.self) { system in
-                                                Text(system.displayName).tag(system)
-                                            }
-                                        }
-                                        .pickerStyle(.segmented)
-                                        .onChange(of: bindableGoals.unitSystem) { _, newSystem in
-                                            // Save to SwiftData automatically via @Bindable
-                                            try? modelContext.save()
-                                            print("📏 Unit system changed to: \(newSystem.displayName)")
-                                        }
-
-                                        Text("Choose between \(bindableGoals.unitSystem == .metric ? "kg/cm" : "lbs/ft") for weight and height measurements.")
-                                            .font(.caption)
-                                            .foregroundStyle(secondaryTextColor)
-                                    }
-                                    
-                                    Divider()
-                                        .background(cardBorderColor)
-                                    
-                                    // Energy Unit Picker
-                                    VStack(alignment: .leading, spacing: 12) {
-                                        Text("Energy Units")
-                                            .font(.headline)
-                                            .foregroundStyle(primaryTextColor)
-                                        
-                                        Picker("Energy Units", selection: $bindableGoals.energyUnit) {
-                                            ForEach(EnergyUnit.allCases, id: \.self) { unit in
-                                                Text(unit.rawValue).tag(unit)
-                                            }
-                                        }
-                                        .pickerStyle(.segmented)
-                                        .onChange(of: bindableGoals.energyUnit) { _, newUnit in
-                                            try? modelContext.save()
-                                            print("⚡️ Energy unit changed to: \(newUnit.rawValue)")
-                                        }
-
-                                        Text("Choose between Calories (kcal) and Kilojoules (kJ).")
-                                            .font(.caption)
-                                            .foregroundStyle(secondaryTextColor)
-                                    }
-                                    
-                                    Divider()
-                                        .background(cardBorderColor)
-                                    
-                                    // Mochi Theme Selector
-                                    VStack(alignment: .leading, spacing: 12) {
-                                        Text("Mochi Theme")
-                                            .font(.headline)
-                                            .foregroundStyle(primaryTextColor)
-                                        
-                                        Text("Choose your favorite mochi flavor")
-                                            .font(.caption)
-                                            .foregroundStyle(secondaryTextColor)
-                                        
-                                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                                            ForEach(MochiTheme.allCases, id: \.self) { theme in
-                                                MochiThemeButton(
-                                                    theme: theme,
-                                                    isSelected: themeManager.currentTheme == theme,
-                                                    action: {
-                                                        let haptic = UIImpactFeedbackGenerator(style: .medium)
-                                                        haptic.impactOccurred()
-                                                        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                                                            themeManager.currentTheme = theme
-                                                        }
-                                                    }
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            .padding(.horizontal, 24)
-                        }
-
-                        // MARK: - WIDGETS SHOWCASE
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("Home Screen Widgets")
-                                .font(.title3).bold()
-                                .foregroundStyle(primaryTextColor)
-                                .padding(.horizontal, 24)
-
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 16) {
-                                    // Calorie Widget Preview
-                                    VStack(spacing: 8) {
-                                        CalorieWidgetPreview(colorScheme: colorScheme)
-                                        Text("Calories")
-                                            .font(.caption.weight(.medium))
-                                            .foregroundStyle(secondaryTextColor)
-                                    }
-
-                                    // Water Widget Preview
-                                    VStack(spacing: 8) {
-                                        WaterWidgetPreview(colorScheme: colorScheme)
-                                        Text("Water")
-                                            .font(.caption.weight(.medium))
-                                            .foregroundStyle(secondaryTextColor)
-                                    }
-
-                                    // Quick Scan Widget Preview
-                                    VStack(spacing: 8) {
-                                        ScanWidgetPreview(colorScheme: colorScheme)
-                                        Text("Quick Scan")
-                                            .font(.caption.weight(.medium))
-                                            .foregroundStyle(secondaryTextColor)
-                                    }
-                                }
-                                .padding(.horizontal, 24)
-                            }
-
-                            // How to add widgets tip
-                            FrostedGlassContainer {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "lightbulb.fill")
-                                        .foregroundStyle(.yellow)
-                                        .font(.title3)
-
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Add widgets to your Home Screen")
-                                            .font(.subheadline.weight(.semibold))
-                                            .foregroundStyle(primaryTextColor)
-                                        Text("Long press your Home Screen → tap + → search \"MochiMeter\"")
-                                            .font(.caption)
-                                            .foregroundStyle(secondaryTextColor)
-                                    }
-
-                                    Spacer()
-                                }
-                            }
-                            .padding(.horizontal, 24)
-                        }
-
-                        // MARK: - LOCK SCREEN WIDGETS SHOWCASE
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("Lock Screen Widgets")
-                                .font(.title3).bold()
-                                .foregroundStyle(primaryTextColor)
-                                .padding(.horizontal, 24)
-
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 16) {
-                                    // Circular Calorie Widget Preview
-                                    VStack(spacing: 8) {
-                                        LockScreenCircularWidgetPreview()
-                                        Text("Calories")
-                                            .font(.caption.weight(.medium))
-                                            .foregroundStyle(secondaryTextColor)
-                                    }
-
-                                    // Rectangular Calorie Widget Preview
-                                    VStack(spacing: 8) {
-                                        LockScreenRectangularWidgetPreview()
-                                        Text("Daily Summary")
-                                            .font(.caption.weight(.medium))
-                                            .foregroundStyle(secondaryTextColor)
-                                    }
-
-                                    // Circular Scan Widget Preview
-                                    VStack(spacing: 8) {
-                                        LockScreenScanWidgetPreview()
-                                        Text("Quick Scan")
-                                            .font(.caption.weight(.medium))
-                                            .foregroundStyle(secondaryTextColor)
-                                    }
-                                }
-                                .padding(.horizontal, 24)
-                            }
-
-                            // How to add lock screen widgets tip
-                            FrostedGlassContainer {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "lock.fill")
-                                        .foregroundStyle(.cyan)
-                                        .font(.title3)
-
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Add widgets to your Lock Screen")
-                                            .font(.subheadline.weight(.semibold))
-                                            .foregroundStyle(primaryTextColor)
-                                        Text("Long press Lock Screen → Customize → tap widgets area → find \"MochiMeter\"")
-                                            .font(.caption)
-                                            .foregroundStyle(secondaryTextColor)
-                                    }
-
-                                    Spacer()
-                                }
-                            }
-                            .padding(.horizontal, 24)
-                        }
+                                
 
 
-                        // MARK: - NOTIFICATIONS
-                        FrostedGlassContainer {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("Notifications")
-                                    .font(.title3).bold()
-                                    .foregroundStyle(primaryTextColor)
 
-                                Text("Enable reminders to protect streaks and keep logging on track.")
-                                    .font(.footnote)
-                                    .foregroundStyle(secondaryTextColor)
 
-                                // Status indicator
-                                HStack(spacing: 8) {
-                                    Image(systemName: notificationStatus == .authorized ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                                        .foregroundStyle(notificationStatus == .authorized ? .green : .orange)
-
-                                    Text(notificationStatusText)
-                                        .font(.subheadline)
-                                        .foregroundStyle(primaryTextColor)
-
-                                    Spacer()
-                                }
-                                .padding(.vertical, 8)
-
-                                // Action button
-                                Button {
-                                    Task {
-                                        await handleNotificationPermission()
-                                    }
-                                } label: {
-                                    HStack {
-                                        Image(systemName: notificationStatus == .authorized ? "gear" : "bell.badge.fill")
-                                        Text(notificationStatus == .authorized ? "Open iOS Settings" : "Enable Notifications")
-                                        Spacer()
-                                        Image(systemName: "chevron.right")
-                                    }
-                                    .font(.headline)
-                                    .foregroundStyle(primaryTextColor)
-                                    .padding(.vertical, 10)
-                                    .padding(.horizontal, 12)
-                                    .background(
-                                        notificationStatus == .authorized
-                                            ? primaryTextColor.opacity(colorScheme == .dark ? 0.12 : 0.08)
-                                            : Color("AppPrimaryAccent").opacity(colorScheme == .dark ? 0.3 : 0.2)
-                                    )
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                                }
-
-                                if notificationStatus == .authorized {
-                                    Divider().background(cardBorderColor)
-
-                                    VStack(alignment: .leading, spacing: 16) {
-                                        // Meal Reminders Toggle
-                                        HStack {
-                                            VStack(alignment: .leading, spacing: 4) {
-                                                HStack {
-                                                    Image(systemName: "fork.knife")
-                                                        .foregroundStyle(Color("AppSecondaryAccent"))
-                                                    Text("Meal Reminders")
-                                                        .font(.headline)
-                                                        .foregroundStyle(primaryTextColor)
-                                                }
-                                                Text("Receive reminders every 4 hours (7am-9pm) to help you stay on track with logging your meals.")
-                                                    .font(.caption)
-                                                    .foregroundStyle(secondaryTextColor)
-                                            }
-                                            Spacer()
-                                            Toggle("", isOn: $bindableGoals.mealRemindersEnabled)
-                                                .labelsHidden()
-                                        }
-
-                                        Divider().background(cardBorderColor)
-
-                                        // Weekly Weight Reminder Toggle
-                                        HStack {
-                                            VStack(alignment: .leading, spacing: 4) {
-                                                HStack {
-                                                    Image(systemName: "figure.stand.line.dotted.figure.stand")
-                                                        .foregroundStyle(Color("AppSecondaryAccent"))
-                                                    Text("Weekly Weight Check-In")
-                                                        .font(.headline)
-                                                        .foregroundStyle(primaryTextColor)
-                                                }
-                                                Text("Get reminded every Monday at 9 AM to log your weight for the week.")
-                                                    .font(.caption)
-                                                    .foregroundStyle(secondaryTextColor)
-                                            }
-                                            Spacer()
-                                            Toggle("", isOn: $bindableGoals.weeklyWeightReminderEnabled)
-                                                .labelsHidden()
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 24)
 
                         } else {
                             // This shows if something went wrong and goals don't exist
@@ -629,75 +271,9 @@ struct SettingsScreen: View {
                                 .foregroundStyle(secondaryTextColor)
                         }
 
-                        // MARK: - ABOUT SECTION
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("About MochiMeter")
-                                .font(.title3).bold()
-                                .foregroundStyle(primaryTextColor)
-                                .padding(.horizontal, 24)
 
-                            FrostedGlassContainer {
-                                VStack {
-                                    Link(destination: URL(string: "https://mochimeter.com/privacy/")!) {
-                                        _buildLinkRow(
-                                            title: "Privacy Policy",
-                                            icon: "hand.raised.fill"
-                                        )
-                                    }
-                                    Divider().background(cardBorderColor)
 
-                                    Link(destination: URL(string: "https://mochimeter.com/terms/")!) {
-                                        _buildLinkRow(
-                                            title: "Terms of Service",
-                                            icon: "doc.text.fill"
-                                        )
-                                    }
-                                    Divider().background(cardBorderColor)
 
-                                    Link(destination: URL(string: "https://world.openfoodfacts.org/")!) {
-                                        _buildLinkRow(
-                                            title: "API Usage (OpenFoodFacts)",
-                                            icon: "network"
-                                        )
-                                    }
-                                    Divider().background(cardBorderColor)
-
-                                    Link(destination: URL(string: "mailto:support@mochimeter.com")!) {
-                                        _buildLinkRow(
-                                            title: "Contact Support",
-                                            icon: "envelope.fill"
-                                        )
-                                    }
-                                    Divider().background(cardBorderColor)
-
-                                    Link(destination: URL(string: "https://mochimeter.canny.io/feature-requests")!) {
-                                        _buildLinkRow(
-                                            title: "Feature Requests",
-                                            icon: "lightbulb.fill"
-                                        )
-                                    }
-                                    Divider().background(cardBorderColor)
-
-                                    Link(destination: URL(string: "https://mochimeter.canny.io/bug-reports")!) {
-                                        _buildLinkRow(
-                                            title: "Report a Bug",
-                                            icon: "ant.fill"
-                                        )
-                                    }
-                                }
-                            }
-                            .padding(.horizontal, 24)
-
-                            // App Version
-                            HStack {
-                                Spacer()
-                                Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"))")
-                                    .font(.caption)
-                                    .foregroundStyle(secondaryTextColor)
-                                Spacer()
-                            }
-                            .padding(.top, 8)
-                        }
 
                         // MARK: - DANGER ZONE (RESET)
                         VStack(spacing: 16) {
@@ -760,6 +336,8 @@ struct SettingsScreen: View {
                 .scrollContentBackground(.hidden)
                 .ignoresSafeArea(edges: .top)
                 .dismissKeyboardOnTap()
+                
+                // Removed manual gradient overlay for performance.
             }
         }
         .task {
@@ -892,8 +470,8 @@ struct SettingsScreen: View {
             style = .dark
         }
         
-        // Notify Superwall Manager
-        superwallManager.setAppearance(style)
+        // Notify StoreKit Manager
+        storeKitManager.setAppearance(style)
 
         // Apply the appearance to all windows in the scene
         for window in windowScene.windows {
@@ -1439,17 +1017,9 @@ struct SettingsScreen: View {
                 .offset(offset2)
                 .offset(x: 100, y: 150)
                 .ignoresSafeArea()
-            } else {
-                // Subtle Dark Mode Lighting - Matched to Home Screen
-                RadialGradient(gradient: Gradient(colors: [Color.white.opacity(0.15), .clear]), center: .topLeading, startRadius: 50, endRadius: 500)
-                    .offset(offset1).offset(x: -100, y: -100).ignoresSafeArea()
-                
-                RadialGradient(gradient: Gradient(colors: [Color.white.opacity(0.08), .clear]), center: .bottomTrailing, startRadius: 50, endRadius: 450)
-                    .offset(offset2).offset(x: 100, y: 100).ignoresSafeArea()
-                
-                RadialGradient(gradient: Gradient(colors: [Color.white.opacity(0.06), .clear]), center: .bottomLeading, startRadius: 60, endRadius: 350)
-                    .offset(offset1).offset(x: -50, y: 120).ignoresSafeArea()
             }
+            // Dark mode keeps a flat tonal-grey background to match the new
+            // Discord-style palette — no orbs.
         }
         .blur(radius: 60)
         .onAppear { animateOrbs() }

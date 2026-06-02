@@ -8,6 +8,8 @@ struct YumoWidgetsBundle: WidgetBundle {
     var body: some Widget {
         ScanWidget()
         WaterWidget()
-        CalorieWidget() // ⭐️ Added the new widget
+        CalorieWidget()
+        WeeklyMileageWidget()
+        RunningReadinessWidget()
     }
 }

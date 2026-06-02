@@ -147,19 +147,21 @@ class FastingManager: ObservableObject {
 
                     let elapsed = Date().timeIntervalSince(activeLog.startTime)
                     self.timeElapsed = elapsed
-                    self.updateCurrentZone(elapsedHours: elapsed / 3600)
+                    self.updateCurrentZone(elapsedHours: elapsed / 3600, isInitialLoad: true)
                     startTimer()
                 }
             }
         }
     }
     
-    private func updateCurrentZone(elapsedHours: Double) {
+    private func updateCurrentZone(elapsedHours: Double, isInitialLoad: Bool = false) {
         for zone in FastingZone.allCases.reversed() {
             if elapsedHours >= zone.startHour {
                 if self.currentZone != zone {
-                    let haptic = UINotificationFeedbackGenerator()
-                    haptic.notificationOccurred(.success)
+                    if !isInitialLoad {
+                        let haptic = UINotificationFeedbackGenerator()
+                        haptic.notificationOccurred(.success)
+                    }
                     self.currentZone = zone
                 }
                 return

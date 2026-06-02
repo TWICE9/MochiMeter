@@ -6,7 +6,7 @@ These Terms of Service (the "Terms") govern your access to and use of the MochiM
 
 By accessing or using the Services, you agree to these Terms. If you do not agree, do not use the Services.
 
-If you are looking for how we handle personal information, please see our Privacy Policy: `PRIVACY_POLICY.md` (also published at https://mochimeter.com/privacy/).
+If you are looking for how we handle personal information, please see our Privacy Policy: `PRIVACY_POLICY.md` (also published at https://mochimeter.com.au/privacy/).
 
 ## 1. Eligibility
 
@@ -121,4 +121,4 @@ Your continued use of the Services after the changes become effective means you 
 
 Questions about these Terms:
 
-**Email**: support@mochimeter.app
+**Email**: support@mochimeter.com.au

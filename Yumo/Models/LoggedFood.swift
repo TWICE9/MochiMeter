@@ -54,6 +54,7 @@ final class LoggedFood {
     var aiIngredientCalories: [String: Double]? = nil  // AI-detected ingredient calorie breakdown (name → calories)
     var aiConfidence: String? = nil  // AI confidence level: "high", "medium", or "low"
     var isAnalyzing: Bool = false  // True when AI analysis is in progress
+    var isAnalysisFailed: Bool = false  // True when AI analysis failed (tap to retry)
 
     init(
         id: UUID = UUID(),

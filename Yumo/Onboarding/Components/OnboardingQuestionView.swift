@@ -60,7 +60,7 @@ struct OnboardingQuestionView<Content: View, Footer: View>: View {
             // Progress bar
             OnboardingProgressBar(progress: progress)
                 .padding(.horizontal, 24)
-                .padding(.top, 8)
+                .padding(.top, 20)
 
             // Back button (left aligned)
             HStack {

@@ -271,6 +271,12 @@ struct NutritionGoalsView: View {
         goals.dailyWaterML = dailyWaterML
         goals.waterCupSizeML = waterCupSizeML
 
+        // Persist changes to disk
+        try? modelContext.save()
+
+        // Notify home screen to refresh with new goals
+        NotificationCenter.default.post(name: Notification.Name("GoalsUpdated"), object: nil)
+
         // Sync to cloud
         syncGoalsToCloud()
 
@@ -278,13 +284,18 @@ struct NutritionGoalsView: View {
     }
 
     private func syncGoalsToCloud() {
-        guard let userId = goals.userId else {
-            print("⚠️ No userId set, skipping goals sync")
-            return
-        }
-
         Task {
-            await CloudSyncManager.shared.uploadUserGoalsImmediately(goals, userId: userId)
+            guard let sessionUserId = await UserSession.shared.getCurrentUserId(), !sessionUserId.isEmpty else {
+                print("⚠️ No userId found in session, skipping goals sync")
+                return
+            }
+            
+            // Ensure goals has the correct userId locally too before syncing
+            if goals.userId == nil {
+                goals.userId = sessionUserId
+            }
+            
+            await CloudSyncManager.shared.uploadUserGoalsImmediately(goals, userId: sessionUserId)
         }
     }
 

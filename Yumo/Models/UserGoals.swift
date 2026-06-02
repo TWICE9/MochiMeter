@@ -94,6 +94,55 @@ enum AppearanceMode: String, Codable, CaseIterable {
 }
 
 
+enum RaceDistance: String, Codable, CaseIterable, Identifiable {
+    case k5 = "5K"
+    case k10 = "10K"
+    case half = "Half Marathon"
+    case full = "Marathon"
+
+    var id: String { rawValue }
+
+    /// Short display label ("5K", "Half", etc.)
+    var shortLabel: String {
+        switch self {
+        case .k5: return "5K"
+        case .k10: return "10K"
+        case .half: return "Half"
+        case .full: return "Full"
+        }
+    }
+
+    /// Exact race distance in km.
+    var km: Double {
+        switch self {
+        case .k5: return 5.0
+        case .k10: return 10.0
+        case .half: return 21.0975
+        case .full: return 42.195
+        }
+    }
+
+    /// Peak weekly training volume (km) a recreational runner aims for.
+    var peakWeeklyKm: Double {
+        switch self {
+        case .k5: return 32
+        case .k10: return 48
+        case .half: return 64
+        case .full: return 80
+        }
+    }
+
+    /// Peak long run distance (km) 2-3 weeks out from race day.
+    var peakLongRunKm: Double {
+        switch self {
+        case .k5: return 8
+        case .k10: return 14
+        case .half: return 21
+        case .full: return 32
+        }
+    }
+}
+
 enum EnergyUnit: String, Codable, CaseIterable {
     case calories = "Calories (kcal)"
     case kilojoules = "Kilojoules (kJ)"
@@ -129,6 +178,25 @@ final class UserGoals {
 
     var targetWeight: Double  // Stored in kg
     var weeklyWeightChangeKg: Double = 0.5  // kg per week (0.25 to 1.0 typical for weight loss)
+
+    // --- Running Goals ---
+    // Stored in km. Displayed in mi when unitSystem is imperial.
+    var weeklyRunningGoalKm: Double = 20
+
+    // --- Race Training ---
+    var raceDate: Date? = nil
+    var raceDistanceRaw: String? = nil
+    var raceName: String? = nil
+
+    var raceDistance: RaceDistance? {
+        get {
+            guard let raw = raceDistanceRaw else { return nil }
+            return RaceDistance(rawValue: raw)
+        }
+        set {
+            raceDistanceRaw = newValue?.rawValue
+        }
+    }
 
     // --- Computed properties for easy access ---
     // This lets the rest of our app use the enum safely
@@ -224,7 +292,9 @@ final class UserGoals {
     var weeklyWeightReminderEnabled: Bool = true
     
     var healthKitEnabled: Bool
-    
+    var useManualGoals: Bool = false
+    var includeBurntCalories: Bool = false
+
     init(
         id: UUID = UUID(),
         name: String = "User",

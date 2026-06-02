@@ -6,53 +6,81 @@ import Auth
 
 struct MainTabView: View {
 
-    // We get the model context here to inject it into the manager objects.
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var authManager: AuthManager
     @Environment(\.colorScheme) private var colorScheme
 
-    @StateObject private var tabRouter = TabRouter()
+    @EnvironmentObject var tabRouter: TabRouter
     @EnvironmentObject var themeManager: ThemeManager
+    @EnvironmentObject var deepLinkManager: DeepLinkManager
 
-    // Simple initialization of FastingManager (NO ARGUMENTS)
-    @StateObject private var fastingManager = FastingManager()
-
-    // ADDED: Create the view model for the shopping list
-
-
-    @State private var offset1: CGSize = .zero
-    @State private var offset2: CGSize = .zero
-    @State private var showAICameraView = false
+    // Legacy tab bar state
     @State private var showFabMenu = false
     @State private var showFabMenuItems = false
+    @Namespace private var tabAnimation
 
     var body: some View {
-        ZStack {
-            _buildDynamicBackground()
-
-            ZStack {
-                Group {
-                    switch tabRouter.selectedTab {
-                    case .home:
-                        HomeScreen()
-
-                            .environmentObject(fastingManager)
-                            .environmentObject(themeManager)
-                case .reports:
-                    ReportsView(userId: authManager.currentUser?.id.uuidString.lowercased() ?? "")
-                        .environmentObject(themeManager)
-                    case .settings:
-                        SettingsScreen()
-                            .environmentObject(fastingManager)
-
-                            .environmentObject(themeManager)
-                    }
-                }
-                .id(tabRouter.selectedTab)
-                .transition(.opacity)
+        mainTabContent
+        // MARK: - Shared Modifiers
+        .onOpenURL { url in
+            handleDeepLink(url: url)
+        }
+        .alert("Discard Changes?", isPresented: $tabRouter.showUnsavedChangesAlert) {
+            Button("Discard", role: .destructive) {
+                tabRouter.confirmDiscardAndSwitch()
             }
-            .animation(.easeInOut(duration: 0.25), value: tabRouter.selectedTab)
-            
+            Button("Keep Editing", role: .cancel) {
+                tabRouter.pendingTab = nil
+            }
+        } message: {
+            Text("You have unsaved changes. Are you sure you want to discard them?")
+        }
+    }
+
+    @ViewBuilder
+    private var mainTabContent: some View {
+        ZStack {
+            // Each tab paints its own opaque background, so we don't need a
+            // shared background layer here. The previous full-screen 60pt blur
+            // was wasted GPU work behind always-opaque tab content.
+            Color("AppPrimaryDark").ignoresSafeArea()
+
+            // ── Persistent tab rendering ──────────────────────────────────
+            // All tabs are kept alive simultaneously, just shown or hidden via
+            // opacity + hit-testing. This mirrors how UITabBarController works
+            // internally and is the reason native TabView feels instant.
+            //
+            // The previous `switch tabRouter.selectedTab { ... }` pattern was
+            // destroying and recreating HealthRingsView on every tab switch,
+            // which re-fired every @StateObject init, @Query subscription, and
+            // .task modifier — causing the observed lag.
+            // ─────────────────────────────────────────────────────────────────
+            let activeTab = tabRouter.selectedTab
+
+            HomeScreen()
+                .environmentObject(themeManager)
+                .opacity(activeTab == .home ? 1 : 0)
+                .allowsHitTesting(activeTab == .home)
+                .accessibilityHidden(activeTab != .home)
+
+            HealthRingsView()
+                .environmentObject(themeManager)
+                .opacity(activeTab == .health ? 1 : 0)
+                .allowsHitTesting(activeTab == .health)
+                .accessibilityHidden(activeTab != .health)
+
+            ReportsView(userId: authManager.currentUser?.id.uuidString.lowercased() ?? "")
+                .environmentObject(themeManager)
+                .opacity(activeTab == .reports ? 1 : 0)
+                .allowsHitTesting(activeTab == .reports)
+                .accessibilityHidden(activeTab != .reports)
+
+            MoreScreen()
+                .environmentObject(themeManager)
+                .opacity(activeTab == .more ? 1 : 0)
+                .allowsHitTesting(activeTab == .more)
+                .accessibilityHidden(activeTab != .more)
+
             // FAB pop-up menu
             if showFabMenu {
                 ZStack {
@@ -61,14 +89,16 @@ struct MainTabView: View {
                         .onTapGesture {
                             closeFabMenu()
                         }
-                    
+
                     VStack {
                         Spacer()
-                        // Centered Horizontal Row
                         HStack(spacing: 16) {
-                            let buttons: [(String, String, String, Color, () -> Void)] = [
-                                // Food (Left)
-                                ("Food", "Find or log foods", "magnifyingglass", themeManager.currentTheme.buttonGradient(for: colorScheme)[0], {
+                            FabMenuButton(
+                                title: "Food",
+                                subtitle: "Find or log foods",
+                                systemImage: "magnifyingglass",
+                                accent: themeManager.currentTheme.buttonGradient(for: colorScheme)[0],
+                                action: {
                                     let haptic = UIImpactFeedbackGenerator(style: .medium); haptic.impactOccurred()
                                     closeFabMenu {
                                         tabRouter.selectedTab = .home
@@ -77,29 +107,29 @@ struct MainTabView: View {
                                             tabRouter.homePath.append(HomeDestination.search)
                                         }
                                     }
-                                }),
-                                // Scan (Right)
-                                ("Scan", "Camera & Barcodes", "camera.viewfinder", themeManager.currentTheme.buttonGradient(for: colorScheme)[1], {
-                                    let haptic = UIImpactFeedbackGenerator(style: .medium); haptic.impactOccurred()
-                                    closeFabMenu { showAICameraView = true }
-                                })
-                            ]
+                                }
+                            )
+                            .opacity(showFabMenuItems ? 1 : 0)
+                            .scaleEffect(showFabMenuItems ? 1 : 0.8)
+                            .animation(.spring(response: 0.35, dampingFraction: 0.75).delay(0.05), value: showFabMenuItems)
 
-                            ForEach(Array(buttons.enumerated()), id: \.offset) { idx, item in
-                                FabMenuButton(
-                                    title: item.0,
-                                    subtitle: item.1,
-                                    systemImage: item.2,
-                                    accent: item.3,
-                                    action: item.4
-                                )
-                                .opacity(showFabMenuItems ? 1 : 0)
-                                .scaleEffect(showFabMenuItems ? 1 : 0.8)
-                                .animation(.spring(response: 0.35, dampingFraction: 0.75).delay(0.05 + Double(idx) * 0.05), value: showFabMenuItems)
-                            }
+                            FabMenuButton(
+                                title: "Scan",
+                                subtitle: "Camera & Barcodes",
+                                systemImage: "camera.viewfinder",
+                                accent: themeManager.currentTheme.buttonGradient(for: colorScheme)[1],
+                                action: {
+                                    let haptic = UIImpactFeedbackGenerator(style: .medium); haptic.impactOccurred()
+                                    closeFabMenu { deepLinkManager.showScanner = true }
+                                }
+                            )
+                            .opacity(showFabMenuItems ? 1 : 0)
+                            .scaleEffect(showFabMenuItems ? 1 : 0.8)
+                            .animation(.spring(response: 0.35, dampingFraction: 0.75).delay(0.1), value: showFabMenuItems)
                         }
+                        .tutorialTarget(id: "fabMenuOptions")
                         .padding(.horizontal, 20)
-                        .padding(.bottom, 20) // Just above tab bar
+                        .padding(.bottom, 20)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                         .onAppear { animateFabMenuIn() }
                         .onDisappear { showFabMenuItems = false }
@@ -113,170 +143,205 @@ struct MainTabView: View {
             _buildCustomTabBar()
         }
         .ignoresSafeArea(edges: .bottom)
-        .environmentObject(tabRouter)
-        .fullScreenCover(isPresented: $showAICameraView) {
-            AICameraScanView()
-                .environmentObject(authManager)
-                .environmentObject(tabRouter)
-        }
         .onAppear {
-            // Call setup() here with the context
             DatabaseSeeder.seedIfEmpty(context: modelContext)
-            fastingManager.setup(context: modelContext)
         }
-        // ⭐️ HANDLE WIDGET DEEP LINKS ⭐️
-        .onOpenURL { url in
-            handleDeepLink(url: url)
+        // Auto-open FAB menu when tutorial reaches that step
+        .onChange(of: TutorialManager.shared.currentStepIndex) { _, newIndex in
+            let tutorial = TutorialManager.shared
+            if tutorial.isShowingTutorial && !tutorial.isShowingWelcome {
+                if let step = tutorial.currentStep, step.id == "fabMenuOptions" {
+                    if !showFabMenu {
+                        openFabMenu()
+                    }
+                }
+            }
+        }
+        // Close FAB menu when tutorial ends
+        .onChange(of: TutorialManager.shared.isShowingTutorial) { _, isShowing in
+            if !isShowing && showFabMenu {
+                closeFabMenu()
+            }
         }
     }
-    
+
     // MARK: - Deep Linking
-    
+
     private func handleDeepLink(url: URL) {
         print("🚀 MainTabView Deep Link received: \(url.absoluteString)")
 
-        if url.absoluteString == "yumo://scan" {
-            // Open the AI Camera view directly
-            showAICameraView = true
-        } else if url.absoluteString == "yumo://home" {
-            // Just switch to Home and reset stack (for Calorie/Water widgets)
+        if url.absoluteString == "yumo://home" {
             tabRouter.selectedTab = .home
             tabRouter.homePath = NavigationPath()
         }
-        // Note: Password reset deep links are handled in ContentView
     }
 
-    // MARK: - View Builders
-
-    @ViewBuilder
-    private func _buildDynamicBackground() -> some View {
-        ZStack {
-            Color("AppPrimaryDark", bundle: nil).ignoresSafeArea()
-            RadialGradient(gradient: Gradient(colors: [Color("AppSecondaryAccent").opacity(0.3), .clear]), center: .topLeading, startRadius: 50, endRadius: 450)
-                .offset(offset1).offset(x: -150, y: -150).ignoresSafeArea()
-            RadialGradient(gradient: Gradient(colors: [Color("AppPrimaryAccent").opacity(0.4), .clear]), center: .bottomTrailing, startRadius: 100, endRadius: 500)
-                .offset(offset2).offset(x: 100, y: 150).ignoresSafeArea()
-        }
-        .blur(radius: 60)
-        .onAppear { animateOrbs() }
-    }
-    
-    private func animateOrbs() {
-        withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
-            offset1 = CGSize(width: 80, height: 60)
-        }
-        withAnimation(.easeInOut(duration: 10).repeatForever(autoreverses: true)) {
-            offset2 = CGSize(width: -100, height: -70)
-        }
-    }
+    // MARK: - Legacy Custom Tab Bar
 
     @ViewBuilder
     private func _buildCustomTabBar() -> some View {
-        let tabBackground: Color = colorScheme == .dark
-            ? Color(red: 28/255, green: 28/255, blue: 32/255)
-            : Color(red: 244/255, green: 244/255, blue: 246/255)
-        let borderColor: Color = colorScheme == .dark
-            ? Color.white.opacity(0.08)
-            : Color.black.opacity(0.05)
-        let activeColor: Color = colorScheme == .dark
-            ? themeManager.currentTheme.darkPrimaryColor
-            : themeManager.currentTheme.primaryColor
+        let activeColor: Color = {
+            if colorScheme == .light && (themeManager.currentTheme == .mango || themeManager.currentTheme == .matcha) {
+                return Color.black.opacity(0.8)
+            }
+            return colorScheme == .dark
+                ? themeManager.currentTheme.darkPrimaryColor
+                : themeManager.currentTheme.primaryColor
+        }()
         let inactiveColor: Color = colorScheme == .dark
             ? Color.white.opacity(0.5)
             : Color.black.opacity(0.45)
 
-        ZStack(alignment: .bottom) {
-            RoundedRectangle(cornerRadius: 34, style: .continuous)
-                .fill(tabBackground)
-                .frame(height: 70)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 34)
-                        .stroke(borderColor, lineWidth: 1.5)
-                )
-                .shadow(color: .black.opacity(0.2), radius: 12, y: 4)
-                .padding(.horizontal, 22)
-                .padding(.bottom, 10)
+        HStack(spacing: 16) {
+            // Navigation Pill
+            ZStack {
+                if #unavailable(iOS 26) {
+                    Capsule()
+                        .fill(.ultraThinMaterial)
+                        .shadow(color: .black.opacity(0.15), radius: 20, x: 0, y: 10)
 
-            HStack(alignment: .center, spacing: 20) {
-                TabButton(
-                    icon: Tab.home.icon,
-                    label: Tab.home.label,
-                    isSelected: tabRouter.selectedTab == .home,
-                    activeColor: activeColor,
-                    inactiveColor: inactiveColor
-                ) {
-                    let haptic = UIImpactFeedbackGenerator(style: .light)
-                    haptic.impactOccurred()
-                    if tabRouter.selectedTab == .home {
-                        tabRouter.homePath = NavigationPath()
-                    } else {
-                        tabRouter.selectedTab = .home
+                    Capsule()
+                        .stroke(
+                            LinearGradient(
+                                colors: [
+                                    .white.opacity(colorScheme == .light ? 0.6 : 0.3),
+                                    .white.opacity(colorScheme == .light ? 0.2 : 0.05)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1.5
+                        )
+                }
+
+                HStack(alignment: .center, spacing: 0) {
+                    _buildTabItem(tab: .home, activeColor: activeColor, inactiveColor: inactiveColor) {
+                        tabRouter.attemptTabSwitch(to: .home)
+                    }
+                    _buildTabItem(tab: .health, activeColor: activeColor, inactiveColor: inactiveColor) {
+                        tabRouter.attemptTabSwitch(to: .health)
+                    }
+                    _buildTabItem(tab: .reports, activeColor: activeColor, inactiveColor: inactiveColor) {
+                        tabRouter.attemptTabSwitch(to: .reports)
+                    }
+                    _buildTabItem(tab: .more, activeColor: activeColor, inactiveColor: inactiveColor) {
+                        tabRouter.attemptTabSwitch(to: .more)
                     }
                 }
+                .padding(.horizontal, 12)
+            }
+            .frame(height: 70)
+            .modifier(GlassEffectModifier(shape: .capsule))
 
-                TabButton(
-                    icon: Tab.reports.icon,
-                    label: Tab.reports.label,
-                    isSelected: tabRouter.selectedTab == .reports,
-                    activeColor: activeColor,
-                    inactiveColor: inactiveColor
-                ) {
-                    let haptic = UIImpactFeedbackGenerator(style: .light)
-                    haptic.impactOccurred()
-                    tabRouter.selectedTab = .reports
+            // FAB
+            Button {
+                let haptic = UIImpactFeedbackGenerator(style: .medium)
+                haptic.impactOccurred()
+                if showFabMenu {
+                    closeFabMenu()
+                } else {
+                    openFabMenu()
                 }
-
-                TabButton(
-                    icon: Tab.settings.icon,
-                    label: Tab.settings.label,
-                    isSelected: tabRouter.selectedTab == .settings,
-                    activeColor: activeColor,
-                    inactiveColor: inactiveColor
-                ) {
-                    let haptic = UIImpactFeedbackGenerator(style: .light)
-                    haptic.impactOccurred()
-                    tabRouter.selectedTab = .settings
-                }
-
-                // Plus button on the right (prominent)
-                Button {
-                    let haptic = UIImpactFeedbackGenerator(style: .medium)
-                    haptic.impactOccurred()
-                    if showFabMenu {
-                        closeFabMenu()
-                    } else {
-                        openFabMenu()
-                    }
-                } label: {
-                    ZStack {
+            } label: {
+                ZStack {
+                    if #unavailable(iOS 26) {
                         Circle()
-                            .fill(
+                            .fill(.ultraThinMaterial)
+                            .shadow(color: .black.opacity(0.15), radius: 20, x: 0, y: 10)
+
+                        Circle()
+                            .stroke(
                                 LinearGradient(
-                                    colors: themeManager.currentTheme.buttonGradient(for: colorScheme),
+                                    colors: [
+                                        .white.opacity(colorScheme == .light ? 0.6 : 0.3),
+                                        .white.opacity(colorScheme == .light ? 0.2 : 0.05)
+                                    ],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
-                                )
+                                ),
+                                lineWidth: 1.5
                             )
-                            .frame(width: 60, height: 60)
-                            .shadow(
-                                color: (colorScheme == .light ? themeManager.currentTheme.primaryColor : themeManager.currentTheme.darkPrimaryColor).opacity(0.4),
-                                radius: 10,
-                                y: 4
-                            )
-
-                        Image(systemName: "plus")
-                            .font(.system(size: 24, weight: .bold))
-                            .foregroundColor(.white)
+                            .frame(width: 70, height: 70)
                     }
+
+                    Image(systemName: "plus")
+                        .font(.system(size: 26, weight: .semibold))
+                        .foregroundStyle(
+                            (colorScheme == .light && (themeManager.currentTheme == .mango || themeManager.currentTheme == .matcha))
+                            ? LinearGradient(
+                                colors: [.black.opacity(0.8), .black.opacity(0.6)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                            : LinearGradient(
+                                colors: themeManager.currentTheme.buttonGradient(for: colorScheme),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
                 }
-                .buttonStyle(.plain)
-                .offset(y: -2)
+                .frame(width: 70, height: 70)
+                .contentShape(Circle())
             }
-            .padding(.horizontal, 26)
-            .padding(.vertical, 12)
+            .modifier(GlassEffectModifier(shape: .circle))
+            .buttonStyle(ScaleButtonStyle())
+            .tutorialTarget(id: "fabButton")
+        }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 20)
+    }
+
+    struct ScaleButtonStyle: ButtonStyle {
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .scaleEffect(configuration.isPressed ? 0.9 : 1.0)
+                .animation(.spring(response: 0.3, dampingFraction: 0.6), value: configuration.isPressed)
         }
     }
-    
+
+    // MARK: - Legacy Tab Item
+
+    @ViewBuilder
+    private func _buildTabItem(tab: AppTab, activeColor: Color, inactiveColor: Color, action: @escaping () -> Void) -> some View {
+        let isSelected = tabRouter.selectedTab == tab
+        let glowColor: Color = (colorScheme == .light && themeManager.currentTheme == .mango) ? themeManager.currentTheme.darkPrimaryColor : activeColor
+
+        Button(action: {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                action()
+            }
+            let haptic = UIImpactFeedbackGenerator(style: .light)
+            haptic.impactOccurred()
+        }) {
+            ZStack {
+                if isSelected {
+                    Capsule()
+                        .fill(glowColor.opacity(0.15))
+                        .matchedGeometryEffect(id: "TabBackground", in: tabAnimation)
+                }
+
+                VStack(spacing: 4) {
+                    Image(systemName: tab.icon)
+                        .font(.system(size: 20, weight: isSelected ? .bold : .semibold))
+                        .foregroundStyle(isSelected ? activeColor : inactiveColor)
+                        .scaleEffect(isSelected ? 1.1 : 1.0)
+
+                    Text(tab.label)
+                        .font(.caption2)
+                        .fontWeight(isSelected ? .semibold : .regular)
+                        .foregroundStyle(isSelected ? activeColor : inactiveColor)
+                }
+                .padding(.vertical, 10)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 55)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(ScaleButtonStyle())
+    }
+
+    // MARK: - FAB Helpers
+
     private func openFabMenu() {
         showFabMenuItems = false
         withAnimation(.easeInOut(duration: 0.2)) {
@@ -286,7 +351,7 @@ struct MainTabView: View {
             animateFabMenuIn()
         }
     }
-    
+
     private func closeFabMenu(completion: (() -> Void)? = nil) {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             showFabMenuItems = false
@@ -298,7 +363,7 @@ struct MainTabView: View {
             completion?()
         }
     }
-    
+
     private func animateFabMenuIn() {
         withAnimation(.spring(response: 0.45, dampingFraction: 0.9)) {
             showFabMenuItems = true
@@ -306,7 +371,7 @@ struct MainTabView: View {
     }
 }
 
-// MARK: - Tab Button Component
+// MARK: - FAB Menu Button Component
 struct FabMenuButton: View {
     let title: String
     let subtitle: String
@@ -329,7 +394,7 @@ struct FabMenuButton: View {
                             : Color.white.opacity(0.12)
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                
+
                 VStack(spacing: 4) {
                     Text(title)
                         .font(.title3.weight(.bold))
@@ -343,7 +408,7 @@ struct FabMenuButton: View {
                 }
             }
             .padding(16)
-            .frame(width: 165, height: 165) // Square Size
+            .frame(width: 165, height: 165)
             .background(
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
                     .fill(isLight ? Color.white : Color(red: 26/255, green: 26/255, blue: 32/255))
@@ -372,6 +437,7 @@ struct FabMenuButton: View {
     }
 }
 
+// MARK: - Legacy Tab Button (kept for compatibility)
 struct TabButton: View {
     let icon: String
     let label: String
@@ -394,5 +460,28 @@ struct TabButton: View {
             .frame(maxWidth: .infinity)
         }
         .accessibilityLabel(label)
+    }
+}
+
+// MARK: - Glass Effect Modifier (iOS 26 Liquid Glass, fallback no-op)
+enum GlassShape {
+    case capsule
+    case circle
+}
+
+struct GlassEffectModifier: ViewModifier {
+    let shape: GlassShape
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            switch shape {
+            case .capsule:
+                content.glassEffect(.regular.interactive(), in: .capsule)
+            case .circle:
+                content.glassEffect(.regular.interactive(), in: .circle)
+            }
+        } else {
+            content
+        }
     }
 }

@@ -81,6 +81,21 @@ struct NamePage: View {
             }
         }
         .onAppear {
+            // FAIL-SAFE: If we already have a valid name (from Sign in with Apple),
+            // immediately skip this page. Apple requires that we don't ask for name
+            // if it was already provided by the Authentication Services framework.
+            let trimmedName = flowManager.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedName.isEmpty && trimmedName != "User" {
+                print("✅ [NamePage] Skipping - name already provided: \(trimmedName)")
+                // Skip to next page immediately
+                DispatchQueue.main.async {
+                    if !flowManager.isNavigating {
+                        flowManager.goNext()
+                    }
+                }
+                return
+            }
+            
             // Clear default "User" if still set
             if flowManager.name == "User" {
                 flowManager.name = ""

@@ -278,7 +278,8 @@ actor SupabaseUserService: UserService {
 
         try await client.database
             .from("profiles")
-            .upsert(params)
+            .update(params)
+            .eq("user_id", value: user.id)
             .execute()
 
         #if DEBUG

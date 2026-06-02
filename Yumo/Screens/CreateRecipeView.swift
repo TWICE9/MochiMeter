@@ -2,6 +2,7 @@
 
 import SwiftUI
 import SwiftData
+import VisionKit
 
 struct CreateRecipeView: View {
     
@@ -16,15 +17,16 @@ struct CreateRecipeView: View {
     @Query private var allCommonFoods: [CommonFood]
 
     @EnvironmentObject var themeManager: ThemeManager
+    @EnvironmentObject var tabRouter: TabRouter
     
-    @Query private var userGoals: [UserGoals]
-    
+    @State private var loadedGoals: UserGoals?
+
     private var energyUnit: EnergyUnit {
-        userGoals.first?.energyUnit ?? .calories
+        loadedGoals?.energyUnit ?? .calories
     }
-    
+
     private func convertEnergy(_ kcal: Double) -> Double {
-        userGoals.first?.energyUnit == .kilojoules ? kcal * 4.184 : kcal
+        loadedGoals?.energyUnit == .kilojoules ? kcal * 4.184 : kcal
     }
 
     // --- Recipe State ---
@@ -63,7 +65,7 @@ struct CreateRecipeView: View {
     }
 
     // MARK: - Helper struct for added ingredients
-    struct RecipeIngredient: Identifiable {
+    struct RecipeIngredient: Identifiable, Equatable {
         let id = UUID()
         var name: String
         var servingDescription: String
@@ -106,6 +108,18 @@ struct CreateRecipeView: View {
     private var proteinPerServing: Double { Double(recipeServings) > 0 ? totalProtein / Double(recipeServings) : 0 }
     private var carbsPerServing: Double { Double(recipeServings) > 0 ? totalCarbs / Double(recipeServings) : 0 }
     private var fatPerServing: Double { Double(recipeServings) > 0 ? totalFat / Double(recipeServings) : 0 }
+
+    // MARK: - Unsaved Changes Tracking
+    @State private var showDiscardAlert = false
+    @State private var initialRecipeName = ""
+    @State private var initialRecipeServings = 4
+    @State private var initialIngredients: [RecipeIngredient] = []
+
+    private var hasChanges: Bool {
+        recipeName != initialRecipeName ||
+        recipeServings != initialRecipeServings ||
+        addedIngredients != initialIngredients
+    }
 
     // MARK: - Body
     var body: some View {
@@ -322,6 +336,54 @@ struct CreateRecipeView: View {
                     }
                 }
             }
+            
+            // Capture initial state for change detection
+            initialRecipeName = recipeName
+            initialRecipeServings = recipeServings
+            initialIngredients = addedIngredients
+        }
+        .task {
+            loadedGoals = await UserScopedQuery.fetchUserGoals(context: modelContext)
+        }
+        .onDisappear {
+            // Clear the unsaved changes flag when this view goes away
+            tabRouter.hasUnsavedChanges = false
+        }
+        .onChange(of: recipeName) { _, _ in
+            tabRouter.hasUnsavedChanges = hasChanges
+        }
+        .onChange(of: recipeServings) { _, _ in
+            tabRouter.hasUnsavedChanges = hasChanges
+        }
+        .onChange(of: addedIngredients) { _, _ in
+            tabRouter.hasUnsavedChanges = hasChanges
+        }
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    if hasChanges {
+                        showDiscardAlert = true
+                    } else {
+                        dismiss()
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.body.weight(.semibold))
+                        Text("Back")
+                    }
+                }
+            }
+        }
+        .interactiveDismissDisabled(hasChanges)
+        .alert("Discard Changes?", isPresented: $showDiscardAlert) {
+            Button("Discard", role: .destructive) {
+                dismiss()
+            }
+            Button("Keep Editing", role: .cancel) {}
+        } message: {
+            Text("You have unsaved changes. Are you sure you want to discard them?")
         }
         .sheet(isPresented: $showingSearch) {
             IngredientSearchSheet(
@@ -535,14 +597,14 @@ struct IngredientSearchSheet: View {
 
     @EnvironmentObject var themeManager: ThemeManager
     
-    @Query private var userGoals: [UserGoals]
-    
+    @State private var loadedGoals: UserGoals?
+
     private var energyUnit: EnergyUnit {
-        userGoals.first?.energyUnit ?? .calories
+        loadedGoals?.energyUnit ?? .calories
     }
-    
+
     private func convertEnergy(_ kcal: Double) -> Double {
-        userGoals.first?.energyUnit == .kilojoules ? kcal * 4.184 : kcal
+        loadedGoals?.energyUnit == .kilojoules ? kcal * 4.184 : kcal
     }
 
     let onSelect: (CreateRecipeView.IngredientToAdd) -> Void
@@ -555,6 +617,7 @@ struct IngredientSearchSheet: View {
     @State private var isAICreating = false
     @State private var searchTask: Task<Void, Error>?
     @State private var aiError: String?
+    @State private var showBarcodeScanner = false
     @FocusState private var isSearchFocused: Bool
 
     private let apiService = OpenFoodFactsService()
@@ -589,32 +652,51 @@ struct IngredientSearchSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Search bar
+                // Search bar with scan button
                 HStack(spacing: 12) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(secondaryText)
+                    // Search field
+                    HStack(spacing: 12) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(secondaryText)
 
-                    TextField("Search ingredients...", text: $searchText)
-                        .foregroundStyle(primaryText)
-                        .autocorrectionDisabled()
-                        .focused($isSearchFocused)
+                        TextField("Search ingredients...", text: $searchText)
+                            .foregroundStyle(primaryText)
+                            .autocorrectionDisabled()
+                            .focused($isSearchFocused)
 
-                    if !searchText.isEmpty {
+                        if !searchText.isEmpty {
+                            Button {
+                                searchText = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(secondaryText)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(14)
+                    .background(cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        isSearchFocused = true
+                    }
+                    
+                    // Scan barcode button
+                    if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
                         Button {
-                            searchText = ""
+                            isSearchFocused = false
+                            showBarcodeScanner = true
                         } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(secondaryText)
+                            Image(systemName: "barcode.viewfinder")
+                                .font(.title2)
+                                .foregroundStyle(.white)
+                                .frame(width: 48, height: 48)
+                                .background(accentColor)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
                         .buttonStyle(.plain)
                     }
-                }
-                .padding(14)
-                .background(cardBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    isSearchFocused = true
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
@@ -800,11 +882,34 @@ struct IngredientSearchSheet: View {
         .onChange(of: searchText) { _, newValue in
             handleSearch(for: newValue)
         }
+        .task {
+            loadedGoals = await UserScopedQuery.fetchUserGoals(context: modelContext)
+        }
         .onAppear {
             // Auto-focus search bar when sheet opens
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 isSearchFocused = true
             }
+        }
+        .sheet(isPresented: $showBarcodeScanner) {
+            IngredientBarcodeScannerSheet(
+                onProductScanned: { product in
+                    // Convert scanned product to ingredient and select it
+                    let ingredient = CreateRecipeView.IngredientToAdd(
+                        name: product.productName ?? "Scanned Product",
+                        servingDescription: product.servingSize ?? "1 serving",
+                        caloriesPerServing: product.nutriments?.servingCalories ?? 0,
+                        proteinPerServing: product.nutriments?.servingProtein ?? 0,
+                        carbsPerServing: product.nutriments?.servingCarbs ?? 0,
+                        fatPerServing: product.nutriments?.servingFat ?? 0
+                    )
+                    showBarcodeScanner = false
+                    onSelect(ingredient)
+                },
+                onCancel: {
+                    showBarcodeScanner = false
+                }
+            )
         }
     }
 
@@ -1038,6 +1143,33 @@ struct IngredientSearchSheet: View {
     }
 }
 
+// MARK: - Helper to extract grams from serving description
+
+private func extractGramsFromServingDescription(_ description: String) -> Double? {
+    // Common patterns:
+    // "100g", "100 g", "1 serving (100g)", "1 large (50g)", "1 scoop (30g)", "30g"
+    
+    let patterns = [
+        #"(\d+(?:\.\d+)?)\s*g(?:rams?)?\b"#,  // Matches: 100g, 100 g, 100grams, 100 grams
+        #"\((\d+(?:\.\d+)?)\s*g\)"#,           // Matches: (100g), (50g)
+    ]
+    
+    for pattern in patterns {
+        if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
+            let range = NSRange(description.startIndex..., in: description)
+            if let match = regex.firstMatch(in: description, options: [], range: range) {
+                if let gramRange = Range(match.range(at: 1), in: description) {
+                    if let grams = Double(description[gramRange]) {
+                        return grams
+                    }
+                }
+            }
+        }
+    }
+    
+    return nil
+}
+
 // MARK: - Add Ingredient Sheet
 
 struct AddIngredientSheet: View {
@@ -1048,7 +1180,32 @@ struct AddIngredientSheet: View {
     let onAdd: (CreateRecipeView.RecipeIngredient) -> Void
     let onCancel: () -> Void
 
-    @State private var amount: Double = 1.0
+    @State private var gramsInput: String = ""
+    @State private var servingAmount: Double = 1.0
+    @FocusState private var isGramsFocused: Bool
+    
+    // Extract grams per serving from the description
+    private var gramsPerServing: Double {
+        extractGramsFromServingDescription(ingredient.servingDescription) ?? 100
+    }
+    
+    // Current grams based on serving amount
+    private var currentGrams: Double {
+        gramsPerServing * servingAmount
+    }
+    
+    // Parse user input grams
+    private var inputGrams: Double? {
+        Double(gramsInput.replacingOccurrences(of: ",", with: "."))
+    }
+    
+    // Calculated amount based on gram input
+    private var calculatedAmount: Double {
+        if let grams = inputGrams, grams > 0 {
+            return grams / gramsPerServing
+        }
+        return servingAmount
+    }
 
     private var primaryText: Color {
         colorScheme == .light ? Color(red: 34/255, green: 34/255, blue: 40/255) : .white
@@ -1056,101 +1213,192 @@ struct AddIngredientSheet: View {
     private var secondaryText: Color {
         colorScheme == .light ? Color(red: 120/255, green: 120/255, blue: 130/255) : .white.opacity(0.7)
     }
+    private var cardBackground: Color {
+        colorScheme == .light ? Color.white : Color.white.opacity(0.08)
+    }
     private var accentColor: Color {
         colorScheme == .dark ? themeManager.currentTheme.darkPrimaryColor : themeManager.currentTheme.primaryColor
     }
 
-    private var totalCalories: Double { ingredient.caloriesPerServing * amount }
+    private var totalCalories: Double { ingredient.caloriesPerServing * calculatedAmount }
+    private var totalProtein: Double { ingredient.proteinPerServing * calculatedAmount }
+    private var totalCarbs: Double { ingredient.carbsPerServing * calculatedAmount }
+    private var totalFat: Double { ingredient.fatPerServing * calculatedAmount }
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
-                // Ingredient info
-                VStack(spacing: 8) {
-                    Text(ingredient.name)
-                        .font(.title3)
-                        .fontWeight(.bold)
-                        .foregroundStyle(primaryText)
-                        .multilineTextAlignment(.center)
-
-                    Text(ingredient.servingDescription)
-                        .font(.subheadline)
-                        .foregroundStyle(secondaryText)
-                }
-                .padding(.top, 8)
-
-                // Amount picker
-                VStack(spacing: 12) {
-                    Text("How many servings?")
-                        .font(.subheadline)
-                        .foregroundStyle(secondaryText)
-
-                    HStack(spacing: 20) {
-                        Button {
-                            if amount > 0.5 { amount -= 0.5 }
-                        } label: {
-                            Image(systemName: "minus.circle.fill")
-                                .font(.title)
-                                .foregroundStyle(amount > 0.5 ? accentColor : secondaryText.opacity(0.3))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(amount <= 0.5)
-
-                        Text("\(amount, specifier: "%.1f")")
-                            .font(.system(size: 48, weight: .bold, design: .rounded))
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Ingredient info
+                    VStack(spacing: 8) {
+                        Text(ingredient.name)
+                            .font(.title3)
+                            .fontWeight(.bold)
                             .foregroundStyle(primaryText)
-                            .frame(minWidth: 100)
+                            .multilineTextAlignment(.center)
 
-                        Button {
-                            amount += 0.5
-                        } label: {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.title)
-                                .foregroundStyle(accentColor)
-                        }
-                        .buttonStyle(.plain)
+                        Text("Per serving: \(ingredient.servingDescription)")
+                            .font(.subheadline)
+                            .foregroundStyle(secondaryText)
                     }
-                }
+                    .padding(.top, 16)
 
-                // Calories preview
-                VStack(spacing: 4) {
-                    Text("\(Int(totalCalories))")
-                        .font(.title)
-                        .fontWeight(.bold)
-                        .foregroundStyle(accentColor)
-                    Text("calories")
-                        .font(.subheadline)
-                        .foregroundStyle(secondaryText)
-                }
+                    // Gram input section
+                    VStack(spacing: 16) {
+                        Text("How much are you adding?")
+                            .font(.subheadline)
+                            .foregroundStyle(secondaryText)
+                        
+                        // Gram input field
+                        HStack(spacing: 8) {
+                            TextField("0", text: $gramsInput)
+                                .keyboardType(.decimalPad)
+                                .font(.system(size: 48, weight: .bold, design: .rounded))
+                                .foregroundStyle(primaryText)
+                                .multilineTextAlignment(.center)
+                                .focused($isGramsFocused)
+                                .frame(maxWidth: 150)
+                                .onChange(of: gramsInput) { _, newValue in
+                                    // Update serving amount when grams change
+                                    if let grams = Double(newValue.replacingOccurrences(of: ",", with: ".")), grams > 0 {
+                                        servingAmount = grams / gramsPerServing
+                                    }
+                                }
+                            
+                            Text("g")
+                                .font(.system(size: 32, weight: .semibold, design: .rounded))
+                                .foregroundStyle(secondaryText)
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .background(cardBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(isGramsFocused ? accentColor : Color.clear, lineWidth: 2)
+                        )
+                        
+                        // Quick amount buttons
+                        HStack(spacing: 12) {
+                            ForEach([50, 100, 150, 200], id: \.self) { grams in
+                                Button {
+                                    gramsInput = "\(grams)"
+                                    servingAmount = Double(grams) / gramsPerServing
+                                } label: {
+                                    Text("\(grams)g")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                        .foregroundStyle(gramsInput == "\(grams)" ? .white : primaryText)
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 10)
+                                        .background(gramsInput == "\(grams)" ? accentColor : cardBackground)
+                                        .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        
+                        // Show serving equivalent
+                        if let grams = inputGrams, grams > 0 {
+                            Text("= \(calculatedAmount, specifier: "%.2f") servings")
+                                .font(.caption)
+                                .foregroundStyle(secondaryText)
+                        }
+                    }
 
-                Spacer()
+                    // Nutrition preview
+                    VStack(spacing: 12) {
+                        // Calories - prominent
+                        HStack {
+                            Text("Calories")
+                                .font(.headline)
+                                .foregroundStyle(primaryText)
+                            Spacer()
+                            Text("\(Int(totalCalories))")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .foregroundStyle(accentColor)
+                            Text("kcal")
+                                .font(.subheadline)
+                                .foregroundStyle(secondaryText)
+                        }
+                        
+                        Divider()
+                        
+                        // Macros row
+                        HStack(spacing: 0) {
+                            VStack(spacing: 4) {
+                                Text("\(Int(totalProtein))g")
+                                    .font(.headline)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(.pink)
+                                Text("Protein")
+                                    .font(.caption)
+                                    .foregroundStyle(secondaryText)
+                            }
+                            .frame(maxWidth: .infinity)
+                            
+                            VStack(spacing: 4) {
+                                Text("\(Int(totalCarbs))g")
+                                    .font(.headline)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(accentColor)
+                                Text("Carbs")
+                                    .font(.caption)
+                                    .foregroundStyle(secondaryText)
+                            }
+                            .frame(maxWidth: .infinity)
+                            
+                            VStack(spacing: 4) {
+                                Text("\(Int(totalFat))g")
+                                    .font(.headline)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(.orange)
+                                Text("Fat")
+                                    .font(.caption)
+                                    .foregroundStyle(secondaryText)
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .padding(16)
+                    .background(cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
 
-                // Add button
-                Button {
-                    let newIngredient = CreateRecipeView.RecipeIngredient(
-                        name: ingredient.name,
-                        servingDescription: ingredient.servingDescription,
-                        amount: amount,
-                        caloriesPerServing: ingredient.caloriesPerServing,
-                        proteinPerServing: ingredient.proteinPerServing,
-                        carbsPerServing: ingredient.carbsPerServing,
-                        fatPerServing: ingredient.fatPerServing
-                    )
-                    onAdd(newIngredient)
-                } label: {
-                    Text("Add Ingredient")
-                        .font(.headline)
-                        .fontWeight(.bold)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(accentColor)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                    Spacer(minLength: 20)
+
+                    // Add button
+                    Button {
+                        let newIngredient = CreateRecipeView.RecipeIngredient(
+                            name: ingredient.name,
+                            servingDescription: ingredient.servingDescription,
+                            amount: calculatedAmount,
+                            caloriesPerServing: ingredient.caloriesPerServing,
+                            proteinPerServing: ingredient.proteinPerServing,
+                            carbsPerServing: ingredient.carbsPerServing,
+                            fatPerServing: ingredient.fatPerServing
+                        )
+                        onAdd(newIngredient)
+                    } label: {
+                        Text("Add Ingredient")
+                            .font(.headline)
+                            .fontWeight(.bold)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(calculatedAmount > 0 ? accentColor : Color.gray.opacity(0.5))
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                    }
+                    .disabled(calculatedAmount <= 0)
+                    .padding(.bottom, 8)
                 }
-                .padding(.bottom, 8)
+                .padding(.horizontal, 24)
             }
-            .padding(.horizontal, 24)
+            .scrollDismissesKeyboard(.interactively)
             .background(colorScheme == .light ? Color(red: 244/255, green: 245/255, blue: 247/255) : Color("AppPrimaryDark"))
+            .onTapGesture {
+                isGramsFocused = false
+            }
             .navigationTitle("Add Ingredient")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -1159,7 +1407,15 @@ struct AddIngredientSheet: View {
                         .foregroundStyle(accentColor)
                 }
             }
+            .onAppear {
+                // Initialize with 1 serving worth of grams
+                gramsInput = "\(Int(gramsPerServing))"
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    isGramsFocused = true
+                }
+            }
         }
+        .presentationDetents([.large])
     }
 }
 
@@ -1173,13 +1429,38 @@ struct EditIngredientSheet: View {
     let onSave: (CreateRecipeView.RecipeIngredient) -> Void
     let onCancel: () -> Void
 
-    @State private var amount: Double
+    @State private var gramsInput: String = ""
+    @State private var servingAmount: Double
+    @FocusState private var isGramsFocused: Bool
 
     init(ingredient: CreateRecipeView.RecipeIngredient, onSave: @escaping (CreateRecipeView.RecipeIngredient) -> Void, onCancel: @escaping () -> Void) {
         self.ingredient = ingredient
         self.onSave = onSave
         self.onCancel = onCancel
-        self._amount = State(initialValue: ingredient.amount)
+        self._servingAmount = State(initialValue: ingredient.amount)
+    }
+    
+    // Extract grams per serving from the description
+    private var gramsPerServing: Double {
+        extractGramsFromServingDescription(ingredient.servingDescription) ?? 100
+    }
+    
+    // Current grams based on serving amount
+    private var currentGrams: Double {
+        gramsPerServing * servingAmount
+    }
+    
+    // Parse user input grams
+    private var inputGrams: Double? {
+        Double(gramsInput.replacingOccurrences(of: ",", with: "."))
+    }
+    
+    // Calculated amount based on gram input
+    private var calculatedAmount: Double {
+        if let grams = inputGrams, grams > 0 {
+            return grams / gramsPerServing
+        }
+        return servingAmount
     }
 
     private var primaryText: Color {
@@ -1188,96 +1469,411 @@ struct EditIngredientSheet: View {
     private var secondaryText: Color {
         colorScheme == .light ? Color(red: 120/255, green: 120/255, blue: 130/255) : .white.opacity(0.7)
     }
+    private var cardBackground: Color {
+        colorScheme == .light ? Color.white : Color.white.opacity(0.08)
+    }
     private var accentColor: Color {
         colorScheme == .dark ? themeManager.currentTheme.darkPrimaryColor : themeManager.currentTheme.primaryColor
     }
 
-    private var totalCalories: Double { ingredient.caloriesPerServing * amount }
+    private var totalCalories: Double { ingredient.caloriesPerServing * calculatedAmount }
+    private var totalProtein: Double { ingredient.proteinPerServing * calculatedAmount }
+    private var totalCarbs: Double { ingredient.carbsPerServing * calculatedAmount }
+    private var totalFat: Double { ingredient.fatPerServing * calculatedAmount }
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
-                VStack(spacing: 8) {
-                    Text(ingredient.name)
-                        .font(.title3)
-                        .fontWeight(.bold)
-                        .foregroundStyle(primaryText)
-                        .multilineTextAlignment(.center)
-
-                    Text(ingredient.servingDescription)
-                        .font(.subheadline)
-                        .foregroundStyle(secondaryText)
-                }
-                .padding(.top, 8)
-
-                VStack(spacing: 12) {
-                    Text("Servings")
-                        .font(.subheadline)
-                        .foregroundStyle(secondaryText)
-
-                    HStack(spacing: 20) {
-                        Button {
-                            if amount > 0.5 { amount -= 0.5 }
-                        } label: {
-                            Image(systemName: "minus.circle.fill")
-                                .font(.title)
-                                .foregroundStyle(amount > 0.5 ? accentColor : secondaryText.opacity(0.3))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(amount <= 0.5)
-
-                        Text("\(amount, specifier: "%.1f")")
-                            .font(.system(size: 48, weight: .bold, design: .rounded))
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Ingredient info
+                    VStack(spacing: 8) {
+                        Text(ingredient.name)
+                            .font(.title3)
+                            .fontWeight(.bold)
                             .foregroundStyle(primaryText)
-                            .frame(minWidth: 100)
+                            .multilineTextAlignment(.center)
 
-                        Button {
-                            amount += 0.5
-                        } label: {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.title)
-                                .foregroundStyle(accentColor)
-                        }
-                        .buttonStyle(.plain)
+                        Text("Per serving: \(ingredient.servingDescription)")
+                            .font(.subheadline)
+                            .foregroundStyle(secondaryText)
                     }
-                }
+                    .padding(.top, 16)
 
-                VStack(spacing: 4) {
-                    Text("\(Int(totalCalories))")
-                        .font(.title)
-                        .fontWeight(.bold)
-                        .foregroundStyle(accentColor)
-                    Text("calories")
-                        .font(.subheadline)
-                        .foregroundStyle(secondaryText)
-                }
+                    // Gram input section
+                    VStack(spacing: 16) {
+                        Text("How much are you using?")
+                            .font(.subheadline)
+                            .foregroundStyle(secondaryText)
+                        
+                        // Gram input field
+                        HStack(spacing: 8) {
+                            TextField("0", text: $gramsInput)
+                                .keyboardType(.decimalPad)
+                                .font(.system(size: 48, weight: .bold, design: .rounded))
+                                .foregroundStyle(primaryText)
+                                .multilineTextAlignment(.center)
+                                .focused($isGramsFocused)
+                                .frame(maxWidth: 150)
+                                .onChange(of: gramsInput) { _, newValue in
+                                    // Update serving amount when grams change
+                                    if let grams = Double(newValue.replacingOccurrences(of: ",", with: ".")), grams > 0 {
+                                        servingAmount = grams / gramsPerServing
+                                    }
+                                }
+                            
+                            Text("g")
+                                .font(.system(size: 32, weight: .semibold, design: .rounded))
+                                .foregroundStyle(secondaryText)
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .background(cardBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(isGramsFocused ? accentColor : Color.clear, lineWidth: 2)
+                        )
+                        
+                        // Quick amount buttons
+                        HStack(spacing: 12) {
+                            ForEach([50, 100, 150, 200], id: \.self) { grams in
+                                Button {
+                                    gramsInput = "\(grams)"
+                                    servingAmount = Double(grams) / gramsPerServing
+                                } label: {
+                                    Text("\(grams)g")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                        .foregroundStyle(gramsInput == "\(grams)" ? .white : primaryText)
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 10)
+                                        .background(gramsInput == "\(grams)" ? accentColor : cardBackground)
+                                        .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        
+                        // Show serving equivalent
+                        if let grams = inputGrams, grams > 0 {
+                            Text("= \(calculatedAmount, specifier: "%.2f") servings")
+                                .font(.caption)
+                                .foregroundStyle(secondaryText)
+                        }
+                    }
 
-                Spacer()
+                    // Nutrition preview
+                    VStack(spacing: 12) {
+                        // Calories - prominent
+                        HStack {
+                            Text("Calories")
+                                .font(.headline)
+                                .foregroundStyle(primaryText)
+                            Spacer()
+                            Text("\(Int(totalCalories))")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .foregroundStyle(accentColor)
+                            Text("kcal")
+                                .font(.subheadline)
+                                .foregroundStyle(secondaryText)
+                        }
+                        
+                        Divider()
+                        
+                        // Macros row
+                        HStack(spacing: 0) {
+                            VStack(spacing: 4) {
+                                Text("\(Int(totalProtein))g")
+                                    .font(.headline)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(.pink)
+                                Text("Protein")
+                                    .font(.caption)
+                                    .foregroundStyle(secondaryText)
+                            }
+                            .frame(maxWidth: .infinity)
+                            
+                            VStack(spacing: 4) {
+                                Text("\(Int(totalCarbs))g")
+                                    .font(.headline)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(accentColor)
+                                Text("Carbs")
+                                    .font(.caption)
+                                    .foregroundStyle(secondaryText)
+                            }
+                            .frame(maxWidth: .infinity)
+                            
+                            VStack(spacing: 4) {
+                                Text("\(Int(totalFat))g")
+                                    .font(.headline)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(.orange)
+                                Text("Fat")
+                                    .font(.caption)
+                                    .foregroundStyle(secondaryText)
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .padding(16)
+                    .background(cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
 
-                Button {
-                    var updated = ingredient
-                    updated.amount = amount
-                    onSave(updated)
-                } label: {
-                    Text("Save Changes")
-                        .font(.headline)
-                        .fontWeight(.bold)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(accentColor)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                    Spacer(minLength: 20)
+
+                    // Save button
+                    Button {
+                        var updated = ingredient
+                        updated.amount = calculatedAmount
+                        onSave(updated)
+                    } label: {
+                        Text("Save Changes")
+                            .font(.headline)
+                            .fontWeight(.bold)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(calculatedAmount > 0 ? accentColor : Color.gray.opacity(0.5))
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                    }
+                    .disabled(calculatedAmount <= 0)
+                    .padding(.bottom, 8)
                 }
-                .padding(.bottom, 8)
+                .padding(.horizontal, 24)
             }
-            .padding(.horizontal, 24)
+            .scrollDismissesKeyboard(.interactively)
             .background(colorScheme == .light ? Color(red: 244/255, green: 245/255, blue: 247/255) : Color("AppPrimaryDark"))
+            .onTapGesture {
+                isGramsFocused = false
+            }
             .navigationTitle("Edit Ingredient")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { onCancel() }
                         .foregroundStyle(accentColor)
+                }
+            }
+            .onAppear {
+                // Initialize with current grams
+                let currentGrams = gramsPerServing * ingredient.amount
+                gramsInput = currentGrams.truncatingRemainder(dividingBy: 1) == 0 
+                    ? "\(Int(currentGrams))" 
+                    : String(format: "%.1f", currentGrams)
+            }
+        }
+        .presentationDetents([.large])
+    }
+}
+
+// MARK: - Ingredient Barcode Scanner Sheet
+
+struct IngredientBarcodeScannerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject var themeManager: ThemeManager
+    
+    let onProductScanned: (OFFProduct) -> Void
+    let onCancel: () -> Void
+    
+    @State private var isScanning = true
+    @State private var scannedCode: String?
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+    
+    private let apiService = OpenFoodFactsService()
+    
+    private var accentColor: Color {
+        colorScheme == .dark ? themeManager.currentTheme.darkPrimaryColor : themeManager.currentTheme.primaryColor
+    }
+    
+    private var adaptiveTextColor: Color {
+        colorScheme == .light ? Color(red: 0.1, green: 0.1, blue: 0.1) : .white
+    }
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                // Camera scanner
+                IngredientDataScannerWrapper(
+                    scannedCode: $scannedCode,
+                    isScanning: $isScanning
+                )
+                .ignoresSafeArea()
+                
+                // Status overlay
+                VStack {
+                    Spacer()
+                    _buildStatusOverlay()
+                }
+                .padding(.bottom, 100)
+            }
+            .navigationTitle("Scan Product")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { onCancel() }
+                        .foregroundStyle(.white)
+                }
+            }
+            .toolbarBackground(.hidden, for: .navigationBar)
+        }
+        .task(id: scannedCode) {
+            guard let code = scannedCode else { return }
+            
+            isScanning = false
+            isLoading = true
+            errorMessage = nil
+            
+            do {
+                let product = try await fetchAndCacheProduct(by: code)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                onProductScanned(product)
+            } catch let error as NetworkError {
+                errorMessage = error.localizedDescription
+                isLoading = false
+            } catch {
+                errorMessage = "Product not found. Try searching by name instead."
+                isLoading = false
+            }
+        }
+    }
+    
+    private func fetchAndCacheProduct(by code: String) async throws -> OFFProduct {
+        let product = try await apiService.fetchFoodByBarcode(code)
+        
+        // Cache it in SwiftData for future searches
+        let newCacheItem = CommonFood(
+            name: product.productName ?? "Unknown Product",
+            barcode: code,
+            caloriesPerServing: product.nutriments?.servingCalories ?? 0,
+            proteinPerServing: product.nutriments?.servingProtein ?? 0,
+            carbsPerServing: product.nutriments?.servingCarbs ?? 0,
+            fatPerServing: product.nutriments?.servingFat ?? 0,
+            fiberPerServing: product.nutriments?.servingFiber ?? 0,
+            sugarPerServing: product.nutriments?.servingSugars ?? 0,
+            saltPerServing: product.nutriments?.servingSalt ?? 0,
+            potassiumPerServing: product.nutriments?.servingPotassium ?? 0,
+            servingSizeDescription: product.servingSize ?? "1 serving",
+            isHalal: product.isHalal
+        )
+        
+        modelContext.insert(newCacheItem)
+        return product
+    }
+    
+    @ViewBuilder
+    private func _buildStatusOverlay() -> some View {
+        VStack(spacing: 12) {
+            if isLoading {
+                ProgressView()
+                    .tint(adaptiveTextColor)
+                Text("Fetching product...")
+                    .font(.headline)
+                    .foregroundStyle(adaptiveTextColor)
+            } else if let errorMessage {
+                Text(errorMessage)
+                    .font(.headline)
+                    .foregroundStyle(adaptiveTextColor)
+                    .multilineTextAlignment(.center)
+                Button {
+                    resetScanner()
+                } label: {
+                    Text("Try Again")
+                        .bold()
+                        .padding(10)
+                        .background(accentColor)
+                        .foregroundStyle(.white)
+                        .clipShape(Capsule())
+                }
+            } else if isScanning {
+                Text("Point at a barcode")
+                    .font(.headline)
+                    .foregroundStyle(adaptiveTextColor)
+            }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .padding(.horizontal, 30)
+    }
+    
+    private func resetScanner() {
+        scannedCode = nil
+        errorMessage = nil
+        isLoading = false
+        isScanning = true
+    }
+}
+
+// MARK: - Ingredient Data Scanner Wrapper
+
+struct IngredientDataScannerWrapper: UIViewControllerRepresentable {
+    @Binding var scannedCode: String?
+    @Binding var isScanning: Bool
+    
+    func makeUIViewController(context: Context) -> DataScannerViewController {
+        let scanner = DataScannerViewController(
+            recognizedDataTypes: [.barcode()],
+            qualityLevel: .balanced,
+            recognizesMultipleItems: false,
+            isHighFrameRateTrackingEnabled: true,
+            isHighlightingEnabled: true
+        )
+        scanner.delegate = context.coordinator
+        return scanner
+    }
+    
+    func updateUIViewController(_ uiViewController: DataScannerViewController, context: Context) {
+        if isScanning {
+            try? uiViewController.startScanning()
+        } else {
+            uiViewController.stopScanning()
+        }
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+    
+    class Coordinator: NSObject, DataScannerViewControllerDelegate {
+        let parent: IngredientDataScannerWrapper
+        
+        init(parent: IngredientDataScannerWrapper) {
+            self.parent = parent
+        }
+        
+        func dataScanner(_ dataScanner: DataScannerViewController, didTapOn item: RecognizedItem) {
+            guard parent.isScanning else { return }
+            
+            switch item {
+            case .barcode(let barcode):
+                if let code = barcode.payloadStringValue {
+                    parent.scannedCode = code
+                    parent.isScanning = false
+                }
+            default:
+                break
+            }
+        }
+        
+        func dataScanner(_ dataScanner: DataScannerViewController, didAdd addedItems: [RecognizedItem], allItems: [RecognizedItem]) {
+            guard parent.isScanning else { return }
+            
+            for item in addedItems {
+                switch item {
+                case .barcode(let barcode):
+                    if let code = barcode.payloadStringValue {
+                        parent.scannedCode = code
+                        parent.isScanning = false
+                        return
+                    }
+                default:
+                    break
                 }
             }
         }

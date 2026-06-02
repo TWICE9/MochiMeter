@@ -24,8 +24,24 @@ class SuperwallManager: ObservableObject {
 
     // Track Supabase premium override separately
     private var supabasePremium: Bool = false
+    
+    // MARK: - Caching
+    private let premiumCacheKey = "cached_is_premium"
+    
+    /// Load cached premium status from UserDefaults (instant, no network)
+    private var cachedPremiumStatus: Bool {
+        get { UserDefaults.standard.bool(forKey: premiumCacheKey) }
+        set { UserDefaults.standard.set(newValue, forKey: premiumCacheKey) }
+    }
 
-    private init() {}
+    private init() {
+        // Immediately load cached premium status on init
+        // This ensures premium users NEVER see "Get Premium" during launch
+        self.isPremium = cachedPremiumStatus
+        #if DEBUG
+        print("🔐 Loaded cached premium status: \(isPremium)")
+        #endif
+    }
 
     /// Configure Superwall on app launch
     func configure() {
@@ -77,7 +93,15 @@ class SuperwallManager: ObservableObject {
         }
 
         // Premium if EITHER Superwall OR Supabase says premium
-        self.isPremium = superwallActive || supabasePremium
+        let newPremiumStatus = superwallActive || supabasePremium
+        
+        // Update and cache the status
+        self.isPremium = newPremiumStatus
+        self.cachedPremiumStatus = newPremiumStatus
+        
+        #if DEBUG
+        print("🔐 Premium status updated and cached: \(newPremiumStatus)")
+        #endif
 
         self.isLoadingPremiumStatus = false
     }
@@ -128,7 +152,8 @@ class SuperwallManager: ObservableObject {
     func reset() {
         self.isPremium = false
         self.supabasePremium = false
-        print("Superwall state reset")
+        self.cachedPremiumStatus = false  // Clear cache on sign out
+        print("🔐 Superwall state and cache reset")
     }
 }
 

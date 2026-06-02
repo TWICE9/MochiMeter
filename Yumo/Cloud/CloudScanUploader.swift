@@ -55,26 +55,17 @@ actor CloudScanUploader {
         servingAmount: Double
     ) async {
 
-        let totalCalories = caloriesPerServing * servingAmount
-        let totalProtein  = proteinPerServing * servingAmount
-        let totalCarbs    = carbsPerServing * servingAmount
-        let totalFat      = fatPerServing * servingAmount
-        let totalFiber    = fiberPerServing * servingAmount
-        let totalSugar    = sugarPerServing * servingAmount
-        let totalSalt     = saltPerServing * servingAmount
-        let totalPotassium = potassiumPerServing * servingAmount
-
         let payload = ScanUploadPayload(
             barcode: barcode,
             food_name: name,
-            calories: totalCalories,
-            protein: totalProtein,
-            carbs: totalCarbs,
-            fat: totalFat,
-            fiber: totalFiber,
-            sugar: totalSugar,
-            salt: totalSalt,
-            potassium: totalPotassium,
+            calories: caloriesPerServing,
+            protein: proteinPerServing,
+            carbs: carbsPerServing,
+            fat: fatPerServing,
+            fiber: fiberPerServing,
+            sugar: sugarPerServing,
+            salt: saltPerServing,
+            potassium: potassiumPerServing,
             scanned_at: ISO8601DateFormatter().string(from: Date())
         )
 
@@ -105,27 +96,18 @@ actor CloudScanUploader {
         servingAmount: Double
     ) async {
 
-        let totalCalories = caloriesPerServing * servingAmount
-        let totalProtein  = proteinPerServing * servingAmount
-        let totalCarbs    = carbsPerServing * servingAmount
-        let totalFat      = fatPerServing * servingAmount
-        let totalFiber    = fiberPerServing * servingAmount
-        let totalSugar    = sugarPerServing * servingAmount
-        let totalSalt     = saltPerServing * servingAmount
-        let totalPotassium = potassiumPerServing * servingAmount
-
         let params = UpsertFoodParams(
             p_barcode: barcode,
             p_name: name,
             p_brand: brand,
-            p_calories: totalCalories,
-            p_protein: totalProtein,
-            p_carbs: totalCarbs,
-            p_fat: totalFat,
-            p_fiber: totalFiber,
-            p_sugar: totalSugar,
-            p_salt: totalSalt,
-            p_potassium: totalPotassium
+            p_calories: caloriesPerServing,
+            p_protein: proteinPerServing,
+            p_carbs: carbsPerServing,
+            p_fat: fatPerServing,
+            p_fiber: fiberPerServing,
+            p_sugar: sugarPerServing,
+            p_salt: saltPerServing,
+            p_potassium: potassiumPerServing
         )
 
         do {

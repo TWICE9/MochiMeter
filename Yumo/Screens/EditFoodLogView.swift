@@ -14,6 +14,8 @@ struct EditFoodLogView: View {
     @EnvironmentObject var themeManager: ThemeManager
     @State private var offset1: CGSize = .zero
     @State private var offset2: CGSize = .zero
+    @State private var servingAmountText: String = ""
+    @State private var showDatePicker: Bool = false
 
     // MARK: - Adaptive Colors (High Contrast for Light Mode)
     private var adaptiveTextColor: Color {
@@ -25,11 +27,9 @@ struct EditFoodLogView: View {
     }
 
     private var backgroundColor: Color {
-        colorScheme == .dark ? Color("AppPrimaryDark") : .white
-    }
-
-    private var inputBackgroundColor: Color {
-        colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.06)
+        colorScheme == .dark
+            ? Color("AppPrimaryDark")
+            : Color(red: 244 / 255, green: 245 / 255, blue: 247 / 255)
     }
 
     private var toolbarBackgroundColor: Color {
@@ -45,59 +45,113 @@ struct EditFoodLogView: View {
             _buildDynamicBackground()
 
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: 24) {
 
-                    // Hero-style header matching detail view
-                    FrostedGlassContainer {
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("Edit Log")
-                                .font(.title2).bold()
-                                .foregroundStyle(adaptiveTextColor)
+                    // -- Name & Serving Card --
+                    VStack(spacing: 20) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Food Name")
+                                .font(.headline)
+                                .foregroundStyle(Color("AppTextPrimary").opacity(0.8))
 
-                            _simpleRow(title: "Name") {
-                                TextField("Food Name", text: $log.name)
-                                    .foregroundStyle(adaptiveTextColor)
-                                    .padding(.vertical, 10)
-                                    .padding(.horizontal, 12)
-                                    .background(inputBackgroundColor)
+                            TextField("Food Name", text: $log.name)
+                                .padding()
+                                .background(Color("AppTextPrimary").opacity(0.1))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .foregroundStyle(Color("AppTextPrimary"))
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Amount")
+                                .font(.headline)
+                                .foregroundStyle(Color("AppTextPrimary").opacity(0.8))
+
+                            HStack(spacing: 12) {
+                                TextField("Servings", text: $servingAmountText)
+                                    .keyboardType(.decimalPad)
+                                    .padding()
+                                    .background(Color("AppTextPrimary").opacity(0.1))
                                     .clipShape(RoundedRectangle(cornerRadius: 12))
-                            }
-
-                            _simpleRow(title: "Amount") {
-                                HStack(spacing: 12) {
-                                    TextField("Servings", value: $log.servingAmount, format: .number)
-                                        .keyboardType(.decimalPad)
-                                        .padding(.vertical, 10)
-                                        .padding(.horizontal, 12)
-                                        .background(inputBackgroundColor)
-                                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                                        .foregroundStyle(adaptiveTextColor)
-                                        .onChange(of: log.servingAmount) { _, newValue in
-                                            log.servingAmount = InputValidation.capServingAmount(newValue)
-                                        }
-                                    Text(log.servingSizeDescription)
-                                        .foregroundStyle(adaptiveSecondaryTextColor)
-                                }
-                            }
-
-                            _simpleRow(title: "Date & Time") {
-                                DatePicker("", selection: $log.timestamp, displayedComponents: [.date, .hourAndMinute])
-                                    .datePickerStyle(.compact)
-                                    .colorScheme(colorScheme)
-                                    .labelsHidden()
-                                    .tint(Color("AppSecondaryAccent"))
-                                    .padding(.vertical, 6)
+                                    .foregroundStyle(Color("AppTextPrimary"))
+                                
+                                Text(log.servingSizeDescription)
+                                    .font(.headline)
+                                    .foregroundStyle(Color("AppTextPrimary"))
                             }
                         }
                     }
-                    .padding(.horizontal)
+                    .padding()
+                    .background(Color("AppTextPrimary").opacity(0.05))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20)
+                            .stroke(Color("AppTextPrimary").opacity(0.1), lineWidth: 1)
+                    )
+                    .cornerRadius(20)
+
+                    // -- Date & Time Card --
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Log Date & Time")
+                            .font(.headline)
+                            .foregroundStyle(Color("AppTextPrimary").opacity(0.8))
+
+                        Button {
+                            withAnimation(.easeInOut) {
+                                showDatePicker.toggle()
+                            }
+                        } label: {
+                            HStack {
+                                Image(systemName: "calendar")
+                                    .foregroundStyle(Color("AppSecondaryAccent"))
+                                Text(log.timestamp, style: .date)
+                                    .font(.body)
+                                    .foregroundStyle(Color("AppTextPrimary"))
+                                Text("•")
+                                    .foregroundStyle(Color("AppTextPrimary").opacity(0.6))
+                                Text(log.timestamp, style: .time)
+                                    .font(.body)
+                                    .foregroundStyle(Color("AppTextPrimary"))
+                                Spacer()
+                                Image(systemName: showDatePicker ? "chevron.up" : "chevron.down")
+                                    .foregroundStyle(Color("AppTextPrimary").opacity(0.6))
+                                    .font(.caption)
+                            }
+                            .padding()
+                            .background(Color("AppTextPrimary").opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                        .buttonStyle(.plain)
+
+                        if showDatePicker {
+                            DatePicker("", selection: $log.timestamp, displayedComponents: [.date, .hourAndMinute])
+                                .datePickerStyle(.graphical)
+                                .tint(Color("AppSecondaryAccent"))
+                                .padding()
+                                .background(Color("AppTextPrimary").opacity(0.05))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                    }
+                    .padding()
+                    .background(Color("AppTextPrimary").opacity(0.05))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20)
+                            .stroke(Color("AppTextPrimary").opacity(0.1), lineWidth: 1)
+                    )
+                    .cornerRadius(20)
 
                 }
-                .padding(.top, 40)
+                .padding(.horizontal, 20)
+                .padding(.top, 24)
                 .padding(.bottom, 60)
             }
         }
         .onAppear {
+            // Initialize the text field with the current serving amount
+            let currentAmount = log.servingAmount
+            if currentAmount == currentAmount.rounded() {
+                servingAmountText = String(format: "%.0f", currentAmount)
+            } else {
+                servingAmountText = String(currentAmount)
+            }
             animateOrbs()
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -113,6 +167,14 @@ struct EditFoodLogView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Done") {
+                    // Validate serving amount on save
+                    if let parsed = Double(servingAmountText), parsed > 0 {
+                        log.servingAmount = InputValidation.capServingAmount(parsed)
+                    } else {
+                        // Default to minimum if empty or invalid
+                        log.servingAmount = 0.1
+                    }
+
                     // Save locally
                     try? modelContext.save()
 
@@ -136,16 +198,6 @@ struct EditFoodLogView: View {
     }
 
     // MARK: - Helper Views
-
-    @ViewBuilder
-    private func _simpleRow<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .foregroundStyle(adaptiveSecondaryTextColor)
-                .font(.subheadline)
-            content()
-        }
-    }
 
     @ViewBuilder
     private func _buildDynamicBackground() -> some View {

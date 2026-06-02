@@ -27,6 +27,8 @@ final class SavedFood {
     // Metadata
     var savedAt: Date
     var isSynced: Bool
+    // Local-only: tracks most recent quick-log usage for ordering the quick picker.
+    var lastUsedAt: Date?
     
     init(
         id: UUID = UUID(),
@@ -44,7 +46,8 @@ final class SavedFood {
         saltPerServing: Double? = nil,
         potassiumPerServing: Double? = nil,
         savedAt: Date = Date(),
-        isSynced: Bool = false
+        isSynced: Bool = false,
+        lastUsedAt: Date? = nil
     ) {
         self.id = id
         self.userId = userId
@@ -62,6 +65,7 @@ final class SavedFood {
         self.potassiumPerServing = potassiumPerServing
         self.savedAt = savedAt
         self.isSynced = isSynced
+        self.lastUsedAt = lastUsedAt
     }
 
     /// Converts this SavedFood item into an OFFProduct for logging

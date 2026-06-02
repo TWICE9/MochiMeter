@@ -5,13 +5,14 @@
 
 import Foundation
 import SwiftUI
+import UIKit
 
 @MainActor
 @Observable
 class OnboardingFlowManager {
     // MARK: - Navigation
     var currentPage: Int = 0
-    let totalPages: Int = 20  // Added theme selection page
+    let totalPages: Int = 21  // Added notification permission page
     var isNavigating: Bool = false
     private let navigationCooldown: Double = 0.45  // Prevent rapid double-taps
 
@@ -68,31 +69,63 @@ class OnboardingFlowManager {
         guard canProceed(for: currentPage) else { return }
 
         performNavigation {
-            // Skip target weight page (9) AND intensity page (10) if weight goal is "maintain"
-            if currentPage == 8 && weightGoal == .maintain {
+            // NEW PAGE ORDER (NamePage moved to after SignInPage):
+            // 0: Welcome, 1: Features, 2: HealthKit, 3: Gender, 4: Activity,
+            // 5: HeightWeight, 6: DOB, 7: WeightGoal, 8: TargetWeight, 9: Intensity,
+            // 10: Blockers, 11: DietType, 12: Goals, 13: ThankYou, 14: Done,
+            // 15: Loading, 16: Summary, 17: Theme, 18: Notifications,
+            // 19: SignIn, 20: NamePage
+            
+            // Skip target weight page (8) AND intensity page (9) if weight goal is "maintain"
+            if currentPage == 7 && weightGoal == .maintain {
                 targetWeight = weight  // Set target to current weight
-                currentPage = min(currentPage + 3, totalPages - 1)  // Skip pages 9 and 10
+                currentPage = min(currentPage + 3, totalPages - 1)  // Skip pages 8 and 9
             }
-            // Skip intensity page (10) if weight goal is "gain" (target weight still needed)
-            else if currentPage == 9 && weightGoal == .gain {
-                currentPage = min(currentPage + 2, totalPages - 1)  // Skip page 10
+            // Skip intensity page (9) if weight goal is "gain" (target weight still needed)
+            else if currentPage == 8 && weightGoal == .gain {
+                currentPage = min(currentPage + 2, totalPages - 1)  // Skip page 9
+            }
+            // Skip NamePage (20) if name is already provided (from Sign in with Apple/Google)
+            // This happens when transitioning FROM SignInPage (19)
+            else if currentPage == 19 {
+                print("🔍 [OnboardingFlowManager] On SignInPage (19), checking if should skip NamePage...")
+                print("   - Current name: '\(name)'")
+                print("   - hasValidName: \(hasValidName)")
+                
+                if hasValidName {
+                    print("✅ [OnboardingFlowManager] Skipping NamePage (20) - name already provided")
+                    // NamePage is the last page (20), so we stay at 19 which will trigger completion
+                    // Actually, we need to go to 20 and let NamePage handle the skip
+                    currentPage = min(currentPage + 2, totalPages - 1)  // Skip to end
+                } else {
+                    currentPage = min(currentPage + 1, totalPages - 1)  // Go to NamePage
+                }
             }
             else {
                 currentPage = min(currentPage + 1, totalPages - 1)
             }
         }
     }
+    
+    /// Returns true if a valid name is already set (not default/empty)
+    private var hasValidName: Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmed.isEmpty && trimmed != "User"
+    }
 
     func goBack() {
         performNavigation {
-            // Skip intensity page (10) AND target weight page (9) when going back if "maintain"
-            if currentPage == 11 && weightGoal == .maintain {
-                currentPage = max(currentPage - 3, 0)  // Skip back over pages 10 and 9
+            // NEW PAGE ORDER - NamePage is now at 20 (after SignInPage at 19)
+            // Skip intensity page (9) AND target weight page (8) when going back if "maintain"
+            if currentPage == 10 && weightGoal == .maintain {
+                currentPage = max(currentPage - 3, 0)  // Skip back over pages 9 and 8
             }
-            // Skip intensity page (10) when going back if weight goal is "gain"
-            else if currentPage == 11 && weightGoal == .gain {
-                currentPage = max(currentPage - 2, 0)  // Skip back over page 10
+            // Skip intensity page (9) when going back if weight goal is "gain"
+            else if currentPage == 10 && weightGoal == .gain {
+                currentPage = max(currentPage - 2, 0)  // Skip back over page 9
             }
+            // Skip NamePage (20) when going back - go directly to SignInPage (19)
+            // Note: NamePage shouldn't have a back button if it's the completion page
             else {
                 currentPage = max(currentPage - 1, 0)
             }
@@ -104,18 +137,19 @@ class OnboardingFlowManager {
         let page = page ?? currentPage
 
         switch page {
-        case 3: // Name
-            return !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        case 6: // Height & Weight
+        // NEW PAGE ORDER after restructuring:
+        case 5: // Height & Weight (was 6)
             return height > 0 && weight > 0
-        case 9: // Target Weight
+        case 8: // Target Weight (was 9)
             return targetWeight > 0
-        case 11: // What's Stopping You (multi-select)
+        case 10: // What's Stopping You - Blockers (was 11)
             return !selectedBlockers.isEmpty
-        case 12: // Diet Type
+        case 11: // Diet Type (was 12)
             return dietType != nil
-        case 13: // What to Accomplish (multi-select)
+        case 12: // What to Accomplish (was 13)
             return !selectedGoalsToAccomplish.isEmpty
+        case 20: // Name (moved from 3 to after SignInPage)
+            return !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         default:
             return true
         }
@@ -221,7 +255,19 @@ class OnboardingFlowManager {
     // MARK: - HealthKit Integration
     
     /// Apply HealthKit profile data to pre-fill onboarding fields
-    func applyHealthKitData(weight weightKg: Double?, height heightCm: Double?, dob: Date?, sex: Int?) {
+    func applyHealthKitData(weight weightKg: Double?, height heightCm: Double?, dob: Date?, sex: Int?, name: String? = nil) {
+        // Pre-fill name if provided AND if we don't already have a valid name
+        // (Sign in with Apple name takes precedence over device-extracted name)
+        if let newName = name, !newName.isEmpty, newName != "User" {
+            let currentName = self.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if currentName.isEmpty || currentName == "User" {
+                self.name = newName
+                print("✅ Pre-filled name from device: \(newName)")
+            } else {
+                print("ℹ️ Keeping existing name: \(currentName) (not overwriting with: \(newName))")
+            }
+        }
+        
         if let weightKg = weightKg, weightKg > 0 {
             self.weight = weightKg
             self.weightWhole = Int(weightKg)
@@ -259,5 +305,24 @@ class OnboardingFlowManager {
                 print("ℹ️ HealthKit sex not set or other, keeping default")
             }
         }
+    }
+    
+    /// Extracts first name from device name (e.g., "John's iPhone" -> "John")
+    static func extractNameFromDevice() -> String? {
+        let deviceName = UIDevice.current.name
+        
+        // Common patterns: "John's iPhone", "John's iPad", "iPhone de Juan"
+        let patterns = ["'s iPhone", "'s iPad", "'s Apple Watch", "'s MacBook", "的 iPhone", "的 iPad", " iPhone", " iPad"]
+        
+        for pattern in patterns {
+            if let range = deviceName.range(of: pattern, options: .caseInsensitive) {
+                let name = String(deviceName[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
+                if !name.isEmpty && name.count >= 2 && name.count <= 20 {
+                    return name
+                }
+            }
+        }
+        
+        return nil
     }
 }

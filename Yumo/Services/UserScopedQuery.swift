@@ -8,12 +8,18 @@
 
 import Foundation
 import SwiftData
+import os.signpost
+
+private nonisolated(unsafe) let querySignposter = OSSignposter(subsystem: "com.yumo.perf", category: "UserScopedQuery")
 
 actor UserScopedQuery {
 
     // MARK: - Food Logs
 
     static func fetchFoodLogs(context: ModelContext) async -> [LoggedFood] {
+        let state = querySignposter.beginInterval("fetchFoodLogs")
+        defer { querySignposter.endInterval("fetchFoodLogs", state) }
+
         let userId = await UserSession.shared.getCurrentUserId()
 
         let predicate: Predicate<LoggedFood>
@@ -28,7 +34,9 @@ actor UserScopedQuery {
             sortBy: [SortDescriptor(\LoggedFood.timestamp, order: .reverse)]
         )
 
-        return (try? context.fetch(descriptor)) ?? []
+        let result = (try? context.fetch(descriptor)) ?? []
+        querySignposter.emitEvent("fetchFoodLogs.count", "count=\(result.count)")
+        return result
     }
 
     static func fetchFoodLogsForToday(context: ModelContext) async -> [LoggedFood] {
@@ -137,6 +145,9 @@ actor UserScopedQuery {
     // MARK: - User Goals
 
     static func fetchUserGoals(context: ModelContext) async -> UserGoals? {
+        let state = querySignposter.beginInterval("fetchUserGoals")
+        defer { querySignposter.endInterval("fetchUserGoals", state) }
+
         let userId = await UserSession.shared.getCurrentUserId()
 
         let predicate: Predicate<UserGoals>
@@ -147,6 +158,57 @@ actor UserScopedQuery {
         }
 
         return try? context.fetch(FetchDescriptor(predicate: predicate)).first
+    }
+
+    // MARK: - Running Profile
+
+    static func fetchRunningProfile(context: ModelContext) async -> RunningProfile? {
+        let userId = await UserSession.shared.getCurrentUserId()
+
+        let predicate: Predicate<RunningProfile>
+        if let userId = userId {
+            predicate = #Predicate { $0.userId == userId }
+        } else {
+            predicate = #Predicate { $0.userId == nil }
+        }
+
+        return try? context.fetch(FetchDescriptor(predicate: predicate)).first
+    }
+
+    // MARK: - Running Plans
+
+    /// All plans for the current user, newest first.
+    static func fetchRunningPlans(context: ModelContext) async -> [RunningPlan] {
+        let userId = await UserSession.shared.getCurrentUserId()
+
+        let predicate: Predicate<RunningPlan>
+        if let userId = userId {
+            predicate = #Predicate { $0.userId == userId }
+        } else {
+            predicate = #Predicate { $0.userId == nil }
+        }
+
+        let descriptor = FetchDescriptor<RunningPlan>(
+            predicate: predicate,
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        return (try? context.fetch(descriptor)) ?? []
+    }
+
+    /// The user's currently active plan, if any.
+    static func fetchActiveRunningPlan(context: ModelContext) async -> RunningPlan? {
+        let plans = await fetchRunningPlans(context: context)
+        return plans.first { $0.status == .active }
+    }
+
+    /// Sessions for a specific plan, sorted by scheduled date ascending.
+    static func fetchPlannedSessions(for planId: UUID, context: ModelContext) async -> [PlannedSession] {
+        let predicate = #Predicate<PlannedSession> { $0.plan?.id == planId }
+        let descriptor = FetchDescriptor<PlannedSession>(
+            predicate: predicate,
+            sortBy: [SortDescriptor(\.scheduledDate, order: .forward)]
+        )
+        return (try? context.fetch(descriptor)) ?? []
     }
 
     // MARK: - Fasting Logs

@@ -185,6 +185,13 @@ final class AnalyticsManager {
             "trigger": trigger
         ])
     }
+
+    /// Track daily free-tier limit screen shown
+    func trackDailyLimitViewed(feature: String) {
+        track(.dailyLimitViewed, properties: [
+            "feature": feature
+        ])
+    }
     
     /// Track subscription purchased
     func trackSubscriptionPurchased(plan: String) {
@@ -241,6 +248,7 @@ enum AnalyticsEvent: String {
     case paywallDismissed = "paywall_dismissed"
     case subscriptionPurchased = "subscription_purchased"
     case freeTrialStarted = "free_trial_started"
+    case dailyLimitViewed = "daily_limit_viewed"
     
     // Features
     case featureUsed = "feature_used"

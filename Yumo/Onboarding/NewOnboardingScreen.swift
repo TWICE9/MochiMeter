@@ -17,6 +17,12 @@ struct NewOnboardingScreen: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var offset1: CGSize = .zero
     @State private var offset2: CGSize = .zero
+    
+    // Use @AppStorage to persist completion state across view recreations
+    // This is the key fix for the "flash to welcome screen" issue
+    @AppStorage("onboarding_isCompleting") private var isCompletingOnboarding = false
+    @AppStorage("onboarding_lockedPage") private var lockedPage: Int = -1  // -1 means not locked
+    @State private var completionMessage = "Finishing setup..."
 
     var onFinish: () -> Void
 
@@ -26,34 +32,57 @@ struct NewOnboardingScreen: View {
             _buildDynamicBackground()
 
             // Page content based on currentPage
+            // NOTE: NamePage moved to AFTER SignInPage to comply with Apple's
+            // Sign in with Apple guidelines - we don't ask for name if SIWA provides it
+            // 
+            // When isCompletingOnboarding is true, we lock the page to prevent
+            // any visual glitches from view hierarchy updates
             Group {
-                switch flowManager.currentPage {
+                // Use locked page if set, otherwise use current page
+                let displayPage = lockedPage >= 0 ? lockedPage : flowManager.currentPage
+                switch displayPage {
                 case 0: WelcomePage(flowManager: flowManager, onFinish: onFinish)
                 case 1: FeatureScreenPage(flowManager: flowManager)
-                case 2: EarlyHealthKitPage(flowManager: flowManager)  // NEW: Early HealthKit to pre-fill data
-                case 3: NamePage(flowManager: flowManager)
-                case 4: GenderPage(flowManager: flowManager)
-                case 5: ActivityLevelPage(flowManager: flowManager)
-                case 6: HeightWeightPage(flowManager: flowManager)
-                case 7: DateOfBirthPage(flowManager: flowManager)
-                case 8: WeightGoalPage(flowManager: flowManager)
-                case 9: TargetWeightPage(flowManager: flowManager)
-                case 10: WeightLossIntensityPage(flowManager: flowManager)
-                case 11: BlockersPage(flowManager: flowManager)
-                case 12: DietTypePage(flowManager: flowManager)
-                case 13: GoalsToAccomplishPage(flowManager: flowManager)
-                case 14:
+                case 2: EarlyHealthKitPage(flowManager: flowManager)
+                case 3: GenderPage(flowManager: flowManager)           // Was 4
+                case 4: ActivityLevelPage(flowManager: flowManager)    // Was 5
+                case 5: HeightWeightPage(flowManager: flowManager)     // Was 6
+                case 6: DateOfBirthPage(flowManager: flowManager)      // Was 7
+                case 7: WeightGoalPage(flowManager: flowManager)       // Was 8
+                case 8: TargetWeightPage(flowManager: flowManager)     // Was 9
+                case 9: WeightLossIntensityPage(flowManager: flowManager)  // Was 10
+                case 10: BlockersPage(flowManager: flowManager)        // Was 11
+                case 11: DietTypePage(flowManager: flowManager)        // Was 12
+                case 12: GoalsToAccomplishPage(flowManager: flowManager)   // Was 13
+                case 13:                                                // Was 14
                     ThankYouAnimationView {
                         flowManager.goNext()
                     }
-                case 15: DoneScreenPage(flowManager: flowManager)
-                case 16:
+                case 14: DoneScreenPage(flowManager: flowManager)      // Was 15
+                case 15:                                                // Was 16
                     LoadingScreenView {
                         flowManager.goNext()
                     }
-                case 17: GoalsSummaryPage(flowManager: flowManager)
-                case 18: ThemeSelectionPage(flowManager: flowManager)
-                case 19: SignInPage(flowManager: flowManager, authManager: authManager, modelContext: modelContext, onFinish: onFinish)
+                case 16: GoalsSummaryPage(flowManager: flowManager)    // Was 17
+                case 17: ThemeSelectionPage(flowManager: flowManager)  // Was 18
+                case 18: NotificationPermissionPage(flowManager: flowManager)  // Was 19
+                case 19: SignInPage(
+                    flowManager: flowManager,
+                    authManager: authManager,
+                    modelContext: modelContext,
+                    onFinish: onFinish,
+                    onStartCompletion: { message in
+                        // Lock the page and show global loading overlay
+                        // Using @AppStorage ensures this persists across view recreations
+                        lockedPage = 19
+                        completionMessage = message
+                        isCompletingOnboarding = true
+                    },
+                    onUpdateMessage: { message in
+                        completionMessage = message
+                    }
+                )
+                case 20: FinalNamePage(flowManager: flowManager, authManager: authManager, modelContext: modelContext, onFinish: onFinish)  // MOVED: Was 3, now after sign-in
                 default: EmptyView()
                 }
             }
@@ -61,10 +90,31 @@ struct NewOnboardingScreen: View {
                 insertion: .move(edge: .trailing).combined(with: .opacity),
                 removal: .move(edge: .leading).combined(with: .opacity)
             ))
-            .id(flowManager.currentPage)
+            .id(lockedPage >= 0 ? lockedPage : flowManager.currentPage)
+            
+            // Global loading overlay - blocks all interaction and prevents visual glitches
+            if isCompletingOnboarding {
+                SyncProgressOverlay(message: completionMessage)
+            }
         }
         .onAppear {
             animateOrbs()
+            
+            // CRITICAL: If we reappear while completion was in progress,
+            // the sign-in already happened - we need to finish immediately
+            if isCompletingOnboarding && authManager.currentUser != nil {
+                print("🔄 [NewOnboardingScreen] Detected completion in progress, finishing...")
+                // Reset the persisted state
+                isCompletingOnboarding = false
+                lockedPage = -1
+                // Finish immediately
+                onFinish()
+            } else if isCompletingOnboarding {
+                // Completion started but no user yet - reset and try again
+                print("⚠️ [NewOnboardingScreen] Completion was in progress but no user, resetting...")
+                isCompletingOnboarding = false
+                lockedPage = -1
+            }
         }
     }
 
@@ -124,30 +174,44 @@ struct FeatureScreenPage: View {
         let primaryText = OnboardingTheme.primaryText(colorScheme)
         let secondaryText = OnboardingTheme.secondaryText(colorScheme)
 
-        VStack(spacing: 30) {
-            Spacer()
+        ZStack(alignment: .topLeading) {
+            VStack(spacing: 30) {
+                Spacer()
 
-            Image(systemName: "heart.text.square.fill")
-                .font(.system(size: 120))
-                .foregroundStyle(Color("AppSecondaryAccent"))
+                Image(systemName: "heart.text.square.fill")
+                    .font(.system(size: 120))
+                    .foregroundStyle(Color("AppSecondaryAccent"))
 
-            Text("We help you maintain healthy long-term results")
-                .font(.title).bold()
-                .foregroundStyle(primaryText)
-                .multilineTextAlignment(.center)
+                Text("We help you maintain healthy long-term results")
+                    .font(.title).bold()
+                    .foregroundStyle(primaryText)
+                    .multilineTextAlignment(.center)
 
-            Text("With personalized nutrition plans and tracking")
-                .font(.headline)
-                .foregroundStyle(secondaryText)
-                .multilineTextAlignment(.center)
+                Text("With personalized nutrition plans and tracking")
+                    .font(.headline)
+                    .foregroundStyle(secondaryText)
+                    .multilineTextAlignment(.center)
 
-            Spacer()
+                Spacer()
 
-            ContinueButton(title: "Next", isEnabled: !flowManager.isNavigating) {
-                flowManager.goNext()
+                ContinueButton(title: "Next", isEnabled: !flowManager.isNavigating) {
+                    flowManager.goNext()
+                }
             }
+            .padding(30)
+            
+            // Back button to return to Welcome screen
+            Button {
+                flowManager.goBack()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(primaryText)
+                    .padding(16)
+            }
+            .padding(.leading, 8)
+            .padding(.top, 8)
         }
-        .padding(30)
     }
 }
 
@@ -424,71 +488,40 @@ struct SignInPage: View {
     var authManager: AuthManager
     var modelContext: ModelContext
     var onFinish: () -> Void
+    
+    // Callbacks to parent for global loading overlay
+    var onStartCompletion: ((String) -> Void)?
+    var onUpdateMessage: ((String) -> Void)?
+    
     @Environment(\.colorScheme) private var colorScheme
     @State private var showEmailSignUp = false
     @State private var isFinishing = false
+    
+    /// Returns true if we have a valid name (from SIWA, Google, or user input)
+    private var hasValidName: Bool {
+        let trimmed = flowManager.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmed.isEmpty && trimmed != "User"
+    }
+    
+    /// Notify parent to show global loading overlay
+    private func startCompletion(message: String) {
+        isFinishing = true
+        onStartCompletion?(message)
+    }
+    
+    /// Update the loading message
+    private func updateMessage(_ message: String) {
+        onUpdateMessage?(message)
+    }
 
     var body: some View {
         let primaryText = OnboardingTheme.primaryText(colorScheme)
         let secondaryText = OnboardingTheme.secondaryText(colorScheme)
 
-        // If user is already signed in (from WelcomePage), show completion page
-        if authManager.currentUser != nil {
-            alreadySignedInView(primaryText: primaryText, secondaryText: secondaryText)
-        } else {
-            // Show sign-in options for users who haven't signed in yet
-            signInOptionsView(primaryText: primaryText, secondaryText: secondaryText)
-        }
-    }
-
-    // MARK: - Already Signed In View
-    @ViewBuilder
-    private func alreadySignedInView(primaryText: Color, secondaryText: Color) -> some View {
-        VStack(spacing: 30) {
-            Spacer()
-
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 120))
-                .foregroundStyle(.green)
-
-            Text("You're All Set!")
-                .font(.largeTitle).bold()
-                .foregroundStyle(primaryText)
-
-            Text("Your profile has been created and you're signed in")
-                .font(.headline)
-                .foregroundStyle(secondaryText)
-                .multilineTextAlignment(.center)
-
-            Spacer()
-
-            Button {
-                isFinishing = true
-                Task {
-                    await finishOnboarding()
-                    await MainActor.run {
-                        onFinish()
-                    }
-                }
-            } label: {
-                HStack {
-                    Text("Take Me Home")
-                    Image(systemName: "arrow.right")
-                }
-                .font(.headline)
-                .fontWeight(.bold)
-                .foregroundColor(.black)
-                .frame(maxWidth: .infinity)
-                .frame(height: 56)
-                .background(Color("AppSecondaryAccent"))
-                .cornerRadius(16)
-            }
+        // Always show sign-in options view
+        // The parent NewOnboardingScreen handles the global loading overlay
+        signInOptionsView(primaryText: primaryText, secondaryText: secondaryText)
             .disabled(isFinishing)
-            .opacity(isFinishing ? 0.6 : 1)
-
-            Spacer()
-        }
-        .padding(30)
     }
 
     // MARK: - Sign In Options View
@@ -526,10 +559,42 @@ struct SignInPage: View {
                     },
                     onCompletion: { authorization in
                         Task {
+                            // Show global loading overlay immediately
+                            await MainActor.run {
+                                startCompletion(message: "Signing you in...")
+                            }
+                            
+                            // Extract full name from Apple credential (only provided on first sign-in)
+                            // IMPORTANT: Apple only provides name on FIRST EVER sign-in with this app
+                            if let credential = authorization.credential as? ASAuthorizationAppleIDCredential {
+                                print("🍎 [SignInPage] Got Apple credential")
+                                if let fullName = credential.fullName {
+                                    let formatter = PersonNameComponentsFormatter()
+                                    let name = formatter.string(from: fullName)
+                                    print("🍎 [SignInPage] Apple provided name: '\(name)'")
+                                    if !name.isEmpty {
+                                        await MainActor.run {
+                                            flowManager.name = name
+                                        }
+                                    }
+                                } else {
+                                    print("⚠️ [SignInPage] Apple did not provide name (subsequent sign-in)")
+                                }
+                            }
+                            
                             await authManager.handleAppleAuthorization(authorization)
                             if let user = authManager.currentUser {
+                                await MainActor.run {
+                                    updateMessage("Setting up your profile...")
+                                }
                                 await authManager.completeSignIn(user: user, modelContext: modelContext)
                             }
+                            
+                            await MainActor.run {
+                                updateMessage("Almost done...")
+                            }
+                            
+                            // With SIWA, name is usually provided, so finish directly
                             await finishOnboarding()
                             await MainActor.run {
                                 onFinish()
@@ -543,21 +608,44 @@ struct SignInPage: View {
                 GoogleSignInButtonView(
                     onSuccess: { idToken, accessToken, fullName in
                         Task {
+                            // Show global loading overlay immediately
+                            await MainActor.run {
+                                startCompletion(message: "Signing you in...")
+                            }
+                            
                             do {
+                                // Set the name from Google
+                                if let name = fullName, !name.isEmpty {
+                                    print("🔵 [SignInPage] Google provided name: '\(name)'")
+                                    await MainActor.run {
+                                        flowManager.name = name
+                                    }
+                                }
+                                
                                 try await authManager.signInWithGoogle(
                                     idToken: idToken,
                                     accessToken: accessToken,
                                     fullName: fullName
                                 )
                                 if let user = authManager.currentUser {
+                                    await MainActor.run {
+                                        updateMessage("Setting up your profile...")
+                                    }
                                     await authManager.completeSignIn(user: user, modelContext: modelContext)
                                 }
+                                
+                                await MainActor.run {
+                                    updateMessage("Almost done...")
+                                }
+                                
+                                // Google provides name, so finish directly
                                 await finishOnboarding()
                                 await MainActor.run {
                                     onFinish()
                                 }
                             } catch {
                                 print("🔵 Google Sign-In failed: \(error.localizedDescription)")
+                                // Note: Can't easily reset global overlay state, but at least the error is logged
                             }
                         }
                     },
@@ -588,12 +676,22 @@ struct SignInPage: View {
                 }
                 .buttonStyle(.plain)
 
+                // "Continue Without Account" - go to NamePage if no name yet
                 Button {
-                    Task {
-                        await finishOnboarding()
-                        await MainActor.run {
-                            onFinish()
+                    // No sign-in = no name from auth provider
+                    // Check if we have a name from somewhere (device extraction, etc.)
+                    if hasValidName {
+                        // We already have a name, finish directly with loading overlay
+                        startCompletion(message: "Finishing setup...")
+                        Task {
+                            await finishOnboarding()
+                            await MainActor.run {
+                                onFinish()
+                            }
                         }
+                    } else {
+                        // No name yet, go to NamePage (page 20)
+                        flowManager.goNext()
                     }
                 } label: {
                     Text("Continue Without Account")
@@ -608,10 +706,13 @@ struct SignInPage: View {
         .sheet(isPresented: $showEmailSignUp) {
             EmailAuthView(
                 isSignUp: true,
-                userName: flowManager.name.isEmpty ? nil : flowManager.name,
+                userName: flowManager.name.isEmpty || flowManager.name == "User" ? nil : flowManager.name,
                 onSuccess: {
                     Task {
-                        // Note: completeSignIn is already called in EmailAuthView.submitForm()
+                        await MainActor.run {
+                            startCompletion(message: "Setting up your profile...")
+                        }
+                        // Email signup includes name entry in the form
                         await finishOnboarding()
                         await MainActor.run {
                             onFinish()
@@ -624,6 +725,7 @@ struct SignInPage: View {
 
     private func finishOnboarding() async {
         print("🏁 [SignInPage] finishOnboarding called")
+        print("🏁 [SignInPage] flowManager.name = '\(flowManager.name)'")
         let goalsToSave = flowManager.buildUserGoals()
 
         // Set userId if signed in (name comes from flowManager, not email)

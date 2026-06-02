@@ -6,15 +6,19 @@ import Combine
 import WidgetKit
 import UserNotifications
 import Auth
+import os.signpost
+
+private let homeSignposter = OSSignposter(subsystem: "com.yumo.perf", category: "HomeScreen")
 
 struct HomeScreen: View {
     
     // 1. Environment & Data Queries
     @EnvironmentObject private var authManager: AuthManager
     @EnvironmentObject private var tabRouter: TabRouter
-    @EnvironmentObject private var superwallManager: SuperwallManager
+    @EnvironmentObject private var storeKitManager: StoreKitManager
     @EnvironmentObject private var themeManager: ThemeManager
     @EnvironmentObject private var adManager: AdManager
+    @ObservedObject private var usageLimitManager = UsageLimitManager.shared
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
@@ -55,7 +59,20 @@ struct HomeScreen: View {
     // MARK: - State & Animation
 
     @State private var allFoodLogs: [LoggedFood] = []
-    @State private var goals: UserGoals = UserGoals()
+    @State private var loadedGoals: UserGoals?
+
+    private var goals: UserGoals {
+        loadedGoals ?? UserGoals()
+    }
+
+    @ObservedObject private var healthKit = HealthKitManager.shared
+
+    /// Daily calorie goal adjusted for burnt calories when the user has opted in.
+    private var effectiveDailyCalories: Double {
+        let base = goals.dailyCalories
+        guard goals.includeBurntCalories else { return base }
+        return base + healthKit.todayBurntCalories
+    }
 
     // Animation State
     @State private var animatedCalories: Double = 0
@@ -66,6 +83,13 @@ struct HomeScreen: View {
     @State private var calorieStreak: Int = 0
     @State private var isStreakPending: Bool = false
 
+    // Cached date-keyed lookups — recomputed only when food data or the calorie goal
+    // changes. The horizontal date selector renders 30 day buttons; without caching,
+    // each scroll-driven body re-eval was rerunning O(allFoodLogs) per button.
+    @State private var datesWithLogs: Set<Date> = []
+    @State private var cachedStreakDates: Set<Date> = []
+    @State private var cachedFoodLogsToday: [LoggedFood] = []
+
     // UI State
     @State private var showWaterSheet = false
     @State private var showFastingSheet = false
@@ -74,23 +98,36 @@ struct HomeScreen: View {
     @FocusState private var isQuickMealFocused: Bool
     @State private var showQuickMealRetryAlert = false
     @State private var failedQuickMealText = ""
+    @State private var retryingFoodIDs: Set<UUID> = []  // guards against double-tap while a retry is being submitted
+    @State private var logToDelete: LoggedFood?
+    @State private var showPaywall = false
+    @State private var paywallTrigger: String = "unknown"
+    @State private var showLimitReached = false
+    @State private var showSavedFoodsQuickPicker = false
+    @Query private var savedFoods: [SavedFood]
 
-    // Background animation state
-    @State private var offset1: CGSize = .zero
-    @State private var offset2: CGSize = .zero
+    // Top 3 saved foods for the quick picker: last-used first, then most-recently-saved.
+    private var quickPickerSavedFoods: [SavedFood] {
+        savedFoods
+            .sorted { lhs, rhs in
+                switch (lhs.lastUsedAt, rhs.lastUsedAt) {
+                case let (l?, r?): return l > r
+                case (_?, nil): return true
+                case (nil, _?): return false
+                case (nil, nil): return lhs.savedAt > rhs.savedAt
+                }
+            }
+            .prefix(3)
+            .map { $0 }
+    }
 
 
     // MARK: - Computed Properties
 
-    // Dynamically filter logs for selected date (updates when date changes)
+    // Cached filtered list — kept in sync via `rebuildFoodLogsToday()` on
+    // .onAppear / changes to allFoodLogs / selectedDate. Reads in O(1).
     private var foodLogsToday: [LoggedFood] {
-        let startOfDay = selectedDate.startOfDay
-        let endOfDay = selectedDate.endOfDay
-        return allFoodLogs.filter { log in
-            log.timestamp >= startOfDay &&
-            log.timestamp <= endOfDay &&
-            log.recipe == nil
-        }
+        cachedFoodLogsToday
     }
 
     private var isViewingToday: Bool {
@@ -127,7 +164,6 @@ struct HomeScreen: View {
     private var totalCarbsToday: Double { foodLogsToday.reduce(0) { $0 + $1.totalCarbs } }
     private var totalFatToday: Double { foodLogsToday.reduce(0) { $0 + $1.totalFat } }
 
-    private var recentLogs: [LoggedFood] { foodLogsToday }
     
     var body: some View {
         mainContent
@@ -144,6 +180,22 @@ struct HomeScreen: View {
             } message: {
                 Text("The AI took too long to analyze your meal. Would you like to try again?")
             }
+            .alert("Delete Log?", isPresented: Binding(
+                get: { logToDelete != nil },
+                set: { if !$0 { logToDelete = nil } }
+            )) {
+                Button("Cancel", role: .cancel) { logToDelete = nil }
+                Button("Delete", role: .destructive) {
+                    if let log = logToDelete {
+                        delete(log: log)
+                        logToDelete = nil
+                    }
+                }
+            } message: {
+                if let log = logToDelete {
+                    Text("Remove \"\(log.name)\" from your log?")
+                }
+            }
     }
     
     private var mainContent: some View {
@@ -159,18 +211,23 @@ struct HomeScreen: View {
                                 .id("homeTopAnchor")
 
                             _buildHeader()
+                                .homeSlideIn(delay: 0)
 
                             _buildCalorieWheel()
+                                .homeSlideIn(delay: 0.05)
 
                             _buildDateSelector()
+                                .homeSlideIn(delay: 0.10)
 
-                            // Ad Banner
+                            // Ad Banner (padding handled internally)
                             ConditionalAdBanner()
-                                .padding(.vertical, 10)
+                                .homeSlideIn(delay: 0.13)
 
                             _buildRecentLogs()
+                                .homeSlideIn(delay: 0.16)
 
                             _buildToolsCarousel()
+                                .homeSlideIn(delay: 0.20)
                         }
                         .padding(.bottom, 100)
                         .contentShape(Rectangle())
@@ -189,10 +246,11 @@ struct HomeScreen: View {
                     }
                     .onChange(of: isQuickMealFocused) { _, isFocused in
                         if isFocused {
-                            // Check premium status when user taps on quick meal input
-                            if !superwallManager.isPremium {
+                            // Non-premium users with no daily quota left see the limit-reached
+                            // sheet up-front; otherwise they can type and we debit on submit.
+                            if !storeKitManager.isPremium && !usageLimitManager.canUseQuickMeal() {
                                 isQuickMealFocused = false
-                                superwallManager.showPaywall()
+                                showLimitReached = true
                                 return
                             }
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -203,6 +261,8 @@ struct HomeScreen: View {
                         }
                     }
                 }
+                
+                // Removed manual gradient overlay for performance.
             }
             .navigationBarHidden(true)
             .navigationDestination(for: HomeDestination.self) { destination in
@@ -216,23 +276,41 @@ struct HomeScreen: View {
                 FastingScreen()
                     .presentationDetents([.medium, .large])
             }
+            .sheet(isPresented: $showPaywall) {
+                PaywallView(trigger: paywallTrigger)
+            }
+            .sheet(isPresented: $showLimitReached) {
+                DailyLimitReachedView(feature: .quickMeal) {
+                    paywallTrigger = "quick_meal_limit"
+                    showPaywall = true
+                }
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+            }
             .task {
+                rebuildDateCaches()
+                rebuildFoodLogsToday()
                 await refreshData()
                 UNUserNotificationCenter.current().removePendingNotificationRequests(
                     withIdentifiers: ["StreakReminderNoon", "StreakReminderEvening"]
                 )
+                // Start tutorial for first-time users
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                TutorialManager.shared.startTutorial()
             }
-            .onAppear {
-                Task { await refreshData() }
-            }
-            .onChange(of: tabRouter.selectedTab) { oldTab, newTab in
+            .onChange(of: tabRouter.selectedTab) { _, newTab in
                 if newTab == .home {
-                    Task {
-                        try? await Task.sleep(nanoseconds: 50_000_000)
-                        await refreshData()
-                    }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                         tabRouter.scrollHomeToTop()
+                    }
+                    // Reset to zero so the spring animation replays on every tab return
+                    animatedCalories = 0
+                    animatedOverflowCalories = 0
+                    animatedProtein = 0
+                    animatedCarbs = 0
+                    animatedFat = 0
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        updateAnimatedValues()
                     }
                 }
             }
@@ -245,17 +323,28 @@ struct HomeScreen: View {
                 }
             }
             .onChange(of: allFoodLogs) { _, _ in
+                rebuildDateCaches()
+                rebuildFoodLogsToday()
                 updateAnimatedValues()
             }
             .onChange(of: selectedDate) { _, _ in
+                rebuildFoodLogsToday()
                 updateAnimatedValues()
                 preloadImagesForSelectedDate()
+            }
+            .onChange(of: goals.dailyCalories) { _, _ in
+                rebuildDateCaches()
             }
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("FoodLogCreated"))) { _ in
                 Task {
                     await refreshData()
                 }
-                tabRouter.scrollHomeToTop()
+                WidgetCenter.shared.reloadAllTimelines()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("GoalsUpdated"))) { _ in
+                Task {
+                    await refreshData()
+                }
             }
         }
     }
@@ -320,9 +409,10 @@ struct HomeScreen: View {
 
                 Spacer()
 
-                if !superwallManager.isPremium {
+                if !storeKitManager.isPremium {
                     Button {
-                        superwallManager.showPaywall()
+                        paywallTrigger = "premium_button_home"
+                        showPaywall = true
                     } label: {
                         HStack(spacing: 5) {
                             Image(systemName: "sparkles")
@@ -383,7 +473,7 @@ struct HomeScreen: View {
 
     @ViewBuilder
     private func _buildDateSelector() -> some View {
-        let streakDates = getStreakDates()
+        let streakDates = cachedStreakDates
 
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
@@ -407,10 +497,10 @@ struct HomeScreen: View {
                         .id(date)
                     }
                 }
-                .padding(.vertical, 6)
+                .padding(.vertical, 14)
             }
             .contentMargins(.horizontal, 24)
-            .padding(.top, 8)
+            .padding(.top, 4)
             .onAppear {
                 // Scroll to selected date when view appears
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -427,10 +517,57 @@ struct HomeScreen: View {
     }
 
     private func dateHasLogs(_ date: Date) -> Bool {
-        let startOfDay = date.startOfDay
-        let endOfDay = date.endOfDay
-        return allFoodLogs.contains { log in
-            log.timestamp >= startOfDay && log.timestamp <= endOfDay
+        datesWithLogs.contains(date.startOfDay)
+    }
+
+    /// Single-pass rebuild of the date-keyed caches. Called from `.onAppear` and
+    /// `.onChange` for the inputs that drive them. Avoids running 30× per render.
+    private func rebuildDateCaches() {
+        let cal = Calendar.current
+        let standalone = allFoodLogs.filter { $0.recipe == nil }
+        let grouped = Dictionary(grouping: standalone) { cal.startOfDay(for: $0.timestamp) }
+        datesWithLogs = Set(grouped.keys)
+
+        // Streak — same logic as `getStreakDates`, but using the already-grouped dict.
+        guard goals.dailyCalories > 0 else {
+            cachedStreakDates = []
+            return
+        }
+        let today = Date().startOfDay
+        var streak = Set<Date>()
+        let todayLogs = grouped[today] ?? []
+        let todayTotal = todayLogs.reduce(0) { $0 + $1.totalCalories }
+        let hasLoggedToday = !todayLogs.isEmpty
+        if hasLoggedToday && todayTotal <= goals.dailyCalories {
+            streak.insert(today)
+            for i in 1..<30 {
+                guard let date = cal.date(byAdding: .day, value: -i, to: today) else { break }
+                let logs = grouped[date] ?? []
+                if logs.isEmpty { break }
+                if logs.reduce(0, { $0 + $1.totalCalories }) <= goals.dailyCalories {
+                    streak.insert(date)
+                } else { break }
+            }
+        } else if !hasLoggedToday {
+            for i in 1..<30 {
+                guard let date = cal.date(byAdding: .day, value: -i, to: today) else { break }
+                let logs = grouped[date] ?? []
+                if logs.isEmpty { break }
+                if logs.reduce(0, { $0 + $1.totalCalories }) <= goals.dailyCalories {
+                    streak.insert(date)
+                } else { break }
+            }
+        }
+        cachedStreakDates = streak
+    }
+
+    private func rebuildFoodLogsToday() {
+        let startOfDay = selectedDate.startOfDay
+        let endOfDay = selectedDate.endOfDay
+        cachedFoodLogsToday = allFoodLogs.filter { log in
+            log.timestamp >= startOfDay
+                && log.timestamp <= endOfDay
+                && log.recipe == nil
         }
     }
 
@@ -452,10 +589,10 @@ struct HomeScreen: View {
     @ViewBuilder
     private func _buildCalorieWheel() -> some View {
         VStack(spacing: isRegularWidth ? 40 : 28) {
-            let goalValue = goals.dailyCalories > 0 ? goals.dailyCalories : 1
+            let goalValue = effectiveDailyCalories > 0 ? effectiveDailyCalories : 1
             let progress = max(0, min(animatedCalories / goalValue, 1))
-            let isOverGoal = animatedCalories > goals.dailyCalories
-            let overflowProgress = min(animatedOverflowCalories / goalValue, 1.0)
+            let isOverGoal = animatedCalories > effectiveDailyCalories
+            let overflowProgress = isOverGoal ? min(animatedOverflowCalories / goalValue, 1.0) : 0
             
             // Adaptive font sizes for iPad
             let calorieFontSize: CGFloat = isRegularWidth ? 64 : 46
@@ -505,7 +642,7 @@ struct HomeScreen: View {
                         .font(.system(size: calorieFontSize, weight: .bold, design: .default))
                         .foregroundColor(isOverGoal ? .red : Color("AppTextPrimary"))
                         .contentTransition(.numericText())
-                    Text("of \(Int(convertEnergy(goals.dailyCalories))) \(goals.energyUnit.unitLabel)")
+                    Text("of \(Int(convertEnergy(effectiveDailyCalories))) \(goals.energyUnit.unitLabel)")
                         .font(isRegularWidth ? .title3 : .headline)
                         .foregroundColor(Color("AppTextPrimary").opacity(0.7))
                 }
@@ -542,6 +679,9 @@ struct HomeScreen: View {
             .onTapGesture {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             }
+            .padding(60) // Prevent clipping of glow/shadow by drawingGroup
+            .drawingGroup() 
+            .padding(-60) // Restore layout bounds
             .padding(.bottom, isRegularWidth ? 24 : 16)
 
             // Macro rings with adaptive sizing
@@ -570,38 +710,32 @@ struct HomeScreen: View {
             _buildQuickMealInput()
 
             // Recent logs header and list
-            if !recentLogs.isEmpty {
+            if !foodLogsToday.isEmpty {
                 Text(isViewingToday ? "Recent Logs" : "Logs for \(selectedDate, format: .dateTime.month().day())")
                     .font(.headline)
                     .foregroundStyle(Color("AppTextPrimary"))
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 12)
 
-                List {
-                    ForEach(recentLogs) { log in
+                LazyVStack(spacing: 12) {
+                    ForEach(foodLogsToday) { log in
                         Button {
-                            tabRouter.homePath.append(HomeDestination.detail(log.persistentModelID))
+                            if log.isAnalysisFailed {
+                                retryAnalysis(for: log)
+                            } else if !log.isAnalyzing {
+                                tabRouter.homePath.append(HomeDestination.detail(log.persistentModelID))
+                            }
                         } label: {
                             _buildFoodLogCard(log: log)
                         }
                         .buttonStyle(.plain)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                delete(log: log)
-                            } label: {
-                                Label("Delete", systemImage: "trash.fill")
-                            }
-                        }
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 12, leading: 0, bottom: 12, trailing: 0))
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .top).combined(with: .opacity).combined(with: .scale(scale: 0.92, anchor: .top)),
+                            removal: .opacity.combined(with: .scale(scale: 0.95))
+                        ))
                     }
                 }
-                .listStyle(.plain)
-                .scrollDisabled(true)
-                .scrollContentBackground(.hidden)
-                .contentMargins(.vertical, 8, for: .scrollContent)
-                .frame(height: CGFloat(recentLogs.count) * 142 + 16) // 118 card + 24 insets = 142 per row
+                .animation(.spring(response: 0.45, dampingFraction: 0.78), value: foodLogsToday.map(\.id))
             } else {
                 // Empty state for both today and other dates
                 FrostedGlassContainer {
@@ -621,233 +755,229 @@ struct HomeScreen: View {
 
     @ViewBuilder
     private func _buildFoodLogCard(log: LoggedFood) -> some View {
-        // Check if this log has a photo or is analyzing, or has a cloud image path
-        let hasVisualContent = log.isAnalyzing || log.photoData != nil || log.cloudImagePath != nil
+        let hasVisualContent = log.isAnalyzing || log.isAnalysisFailed || log.photoData != nil || log.cloudImagePath != nil
+        
+        let cardBackground = Color("AppTextPrimary").opacity(colorScheme == .dark ? 0.06 : 0.03)
+        let cardBorder = Color("AppTextPrimary").opacity(colorScheme == .dark ? 0 : 0.06)
 
-        if hasVisualContent {
-            GeometryReader { geo in
-                let cardWidth = geo.size.width
-                let cardHeight: CGFloat = 118
-                let imageWidth = max(90, cardWidth * 0.25)
-
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(log.isAnalyzing ? Color("AppSecondaryAccent").opacity(0.12) : Color("AppTextPrimary").opacity(colorScheme == .light ? 0.05 : 0.12))
-
-
-                    // Left image band ~25%
-                    HStack(spacing: 0) {
-                        Group {
-                            if log.isAnalyzing {
-                                ZStack {
+        ZStack {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(cardBackground)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(cardBorder, lineWidth: 1)
+            
+            HStack(spacing: 16) {
+                // Media / Avatar Column
+                if hasVisualContent {
+                    Group {
+                        if log.isAnalyzing {
+                            ZStack {
+                                Rectangle()
+                                    .fill(Color("AppSecondaryAccent").opacity(0.22))
+                                AnalyzingProgressView()
+                            }
+                        } else if log.isAnalysisFailed {
+                            ZStack {
+                                if let photoData = log.photoData {
+                                    AsyncThumbnailImage(photoData: photoData, size: 80)
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                        .clipped()
+                                        .overlay(Color.black.opacity(0.4))
+                                } else {
                                     Rectangle()
-                                        .fill(Color("AppSecondaryAccent").opacity(0.22))
-                                    AnalyzingProgressView()
+                                        .fill(Color.red.opacity(0.15))
                                 }
-                            } else if let photoData = log.photoData {
-                                AsyncThumbnailImage(photoData: photoData, size: max(imageWidth, cardHeight))
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                    .clipped()
-                            } else if let cloudPath = log.cloudImagePath {
-                                // Cloud image placeholder & loader
-                                ZStack {
-                                    Rectangle()
-                                        .fill(Color.gray.opacity(0.1))
-                                    ProgressView()
-                                        .scaleEffect(0.7)
-                                }
-                                .task {
-                                    if let data = await ImageStorageManager.shared.downloadImage(path: cloudPath) {
-                                        await MainActor.run {
-                                            withAnimation(.easeIn(duration: 0.3)) {
-                                                log.photoData = data
-                                            }
+                                Image(systemName: "arrow.clockwise.circle.fill")
+                                    .font(.system(size: 28))
+                                    .foregroundStyle(.white)
+                                    .shadow(radius: 2)
+                            }
+                        } else if let photoData = log.photoData {
+                            AsyncThumbnailImage(photoData: photoData, size: 80)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .clipped()
+                        } else if let cloudPath = log.cloudImagePath {
+                            ZStack {
+                                Rectangle()
+                                    .fill(Color.gray.opacity(0.1))
+                                ProgressView()
+                                    .scaleEffect(0.7)
+                            }
+                            .task {
+                                if let data = await ImageStorageManager.shared.downloadImage(path: cloudPath) {
+                                    await MainActor.run {
+                                        withAnimation(.easeIn(duration: 0.3)) {
+                                            log.photoData = data
                                         }
                                     }
                                 }
                             }
                         }
-                        .frame(width: imageWidth, height: cardHeight)
-                        .clipped()
-
-                        Spacer(minLength: 0)
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .frame(width: 76, height: 76)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                } else {
+                    // Avatar Placeholder
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(LinearGradient(
+                                colors: [
+                                    Color("AppPrimaryAccent").opacity(0.6),
+                                    Color("AppSecondaryAccent").opacity(0.6)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ))
+                        Image(systemName: _getFoodIcon(for: log.name))
+                            .font(.system(size: 30, weight: .semibold))
+                            .foregroundStyle(Color("AppPrimaryAccent"))
+                    }
+                    .frame(width: 76, height: 76)
+                }
 
-                    // Text content
-                    VStack(alignment: .leading, spacing: 8) {
-                        if log.isAnalyzing {
-                            // Skeleton loading state with shimmer
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack(alignment: .top) {
-                                    // Skeleton for food name
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(Color("AppTextPrimary").opacity(0.15))
-                                        .frame(width: 120, height: 14)
-                                        .shimmer()
-
-                                    Spacer()
-
-                                    Text(formatTime(log.timestamp))
+                // Info Column
+                VStack(alignment: .leading, spacing: 6) {
+                    if log.isAnalysisFailed {
+                        // Failed state — tap to retry
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(alignment: .firstTextBaseline) {
+                                Text("Analysis failed")
+                                    .font(.headline)
+                                    .foregroundStyle(.red)
+                                Spacer()
+                                Text(Self.timeFormatter.string(from: log.timestamp))
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundStyle(Color("AppTextPrimary").opacity(0.5))
+                                Button {
+                                    logToDelete = log
+                                } label: {
+                                    Image(systemName: "trash")
                                         .font(.caption)
-                                        .foregroundStyle(.gray)
+                                        .foregroundStyle(Color("AppTextPrimary").opacity(0.3))
                                 }
-
-                                // Skeleton for calories
+                                .buttonStyle(.plain)
+                            }
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.caption.weight(.semibold))
+                                Text("Tap to retry")
+                                    .font(.caption.weight(.semibold))
+                            }
+                            .foregroundStyle(Color("AppPrimaryAccent"))
+                        }
+                    } else if log.isAnalyzing {
+                        // Skeleton loading state
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
                                 RoundedRectangle(cornerRadius: 4)
                                     .fill(Color("AppTextPrimary").opacity(0.15))
-                                    .frame(width: 70, height: 16)
+                                    .frame(width: 120, height: 16)
                                     .shimmer()
-
-                                // Skeleton for macros
-                                HStack(spacing: 16) {
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(Color("AppTextPrimary").opacity(0.12))
-                                        .frame(width: 35, height: 12)
-                                        .shimmer()
-
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(Color("AppTextPrimary").opacity(0.12))
-                                        .frame(width: 35, height: 12)
-                                        .shimmer()
-
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(Color("AppTextPrimary").opacity(0.12))
-                                        .frame(width: 35, height: 12)
-                                        .shimmer()
-                                }
-                            }
-                        } else {
-                            HStack(alignment: .top) {
-                                Text(log.name)
-                                    .font(.subheadline)
-                                    .foregroundStyle(Color("AppTextPrimary"))
-                                    .lineLimit(2)
-
                                 Spacer()
-
-                                Text(formatTime(log.timestamp))
-                                    .font(.caption)
-                                    .foregroundStyle(.gray)
+                                Text(Self.timeFormatter.string(from: log.timestamp))
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundStyle(Color("AppTextPrimary").opacity(0.5))
                             }
-
-                            Text("\(Int(convertEnergy(log.totalCalories))) \(goals.energyUnit.unitLabel)")
-                                .font(.subheadline.weight(.bold))
-                                .foregroundStyle(Color("AppTextPrimary").opacity(0.9))
-
-                            HStack(spacing: 16) {
-                                HStack(spacing: 4) {
-                                    Text("P")
-                                        .font(.caption).fontWeight(.semibold)
-                                        .foregroundStyle(.pink)
-                                    Text("\(Int(log.totalProtein))g")
-                                        .font(.caption)
-                                        .foregroundStyle(Color("AppTextPrimary").opacity(0.7))
-                                }
-
-                                HStack(spacing: 4) {
-                                    Text("C")
-                                        .font(.caption).fontWeight(.semibold)
-                                        .foregroundStyle(Color("AppSecondaryAccent"))
-                                    Text("\(Int(log.totalCarbs))g")
-                                        .font(.caption)
-                                        .foregroundStyle(Color("AppTextPrimary").opacity(0.7))
-                                }
-
-                                HStack(spacing: 4) {
-                                    Text("F")
-                                        .font(.caption).fontWeight(.semibold)
-                                        .foregroundStyle(.orange)
-                                    Text("\(Int(log.totalFat))g")
-                                        .font(.caption)
-                                        .foregroundStyle(Color("AppTextPrimary").opacity(0.7))
-                                }
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color("AppTextPrimary").opacity(0.15))
+                                .frame(width: 70, height: 14)
+                                .shimmer()
+                            HStack(spacing: 8) {
+                                RoundedRectangle(cornerRadius: 4).fill(Color("AppTextPrimary").opacity(0.12)).frame(width: 40, height: 18).shimmer()
+                                RoundedRectangle(cornerRadius: 4).fill(Color("AppTextPrimary").opacity(0.12)).frame(width: 40, height: 18).shimmer()
+                                RoundedRectangle(cornerRadius: 4).fill(Color("AppTextPrimary").opacity(0.12)).frame(width: 40, height: 18).shimmer()
                             }
                         }
+                    } else {
+                        // Real Content
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(log.name)
+                                .font(.headline)
+                                .foregroundStyle(Color("AppTextPrimary"))
+                                .lineLimit(1)
+                            Spacer()
+                            Text(Self.timeFormatter.string(from: log.timestamp))
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(Color("AppTextPrimary").opacity(0.5))
+                            Button {
+                                logToDelete = log
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.caption)
+                                    .foregroundStyle(Color("AppTextPrimary").opacity(0.3))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        
+                        HStack {
+                            Text("\(log.servingAmount, specifier: "%.1f") \(log.servingSizeDescription)")
+                                .font(.caption)
+                                .foregroundStyle(Color("AppTextPrimary").opacity(0.7))
+                            Spacer()
+                            Text("\(Int(convertEnergy(log.totalCalories))) ")
+                                .font(.subheadline.bold())
+                                .foregroundStyle(Color("AppTextPrimary").opacity(0.9)) + 
+                            Text(goals.energyUnit.unitLabel)
+                                .font(.caption)
+                                .foregroundStyle(Color("AppTextPrimary").opacity(0.6))
+                        }
+                        
+                        HStack(spacing: 8) {
+                            _macroPillSmall(label: "P", value: log.totalProtein, color: .pink)
+                            _macroPillSmall(label: "C", value: log.totalCarbs, color: Color("AppSecondaryAccent"))
+                            _macroPillSmall(label: "F", value: log.totalFat, color: .orange)
+                        }
+                        .padding(.top, 2)
                     }
-                    .padding(.leading, imageWidth + 16)
-                    .padding(.trailing, 16)
                 }
-                .frame(height: cardHeight)
             }
-            .frame(height: 118)
-            .padding(.horizontal, 24)
-        } else {
-            // Card WITHOUT image - simpler, text-only design
-            VStack(alignment: .leading, spacing: 10) {
-                // Line 1: Name & Time
-                HStack(alignment: .top) {
-                    Text(log.name)
-                        .font(.subheadline)
-                        .foregroundStyle(Color("AppTextPrimary"))
-                        .lineLimit(2)
-
-                    Spacer()
-
-                    Text(formatTime(log.timestamp))
-                        .font(.caption)
-                        .foregroundStyle(.gray)
-                }
-
-                // Line 2: Calories
-                Text("\(Int(convertEnergy(log.totalCalories))) \(goals.energyUnit.unitLabel)")
-                    .font(.subheadline)
-                    .fontWeight(.bold)
-                    .foregroundStyle(Color("AppTextPrimary").opacity(0.9))
-
-                // Line 3: Macros breakdown
-                HStack(spacing: 16) {
-                    // Protein
-                    HStack(spacing: 4) {
-                        Text("P")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.pink)
-                        Text("\(Int(log.totalProtein))g")
-                            .font(.caption)
-                            .foregroundStyle(Color("AppTextPrimary").opacity(0.7))
-                    }
-
-                    // Carbs
-                    HStack(spacing: 4) {
-                        Text("C")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(Color("AppSecondaryAccent"))
-                        Text("\(Int(log.totalCarbs))g")
-                            .font(.caption)
-                            .foregroundStyle(Color("AppTextPrimary").opacity(0.7))
-                    }
-
-                    // Fat
-                    HStack(spacing: 4) {
-                        Text("F")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.orange)
-                        Text("\(Int(log.totalFat))g")
-                            .font(.caption)
-                            .foregroundStyle(Color("AppTextPrimary").opacity(0.7))
-                    }
-                }
-                Spacer()
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, minHeight: 118, maxHeight: 118, alignment: .topLeading)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color("AppTextPrimary").opacity(colorScheme == .light ? 0.05 : 0.12))
-
-            )
-            .padding(.horizontal, 24)
+            .padding(14)
         }
+        .frame(height: 104)
+        .padding(.horizontal, 24)
     }
 
-    private func formatTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
+    private func _macroPillSmall(label: String, value: Double, color: Color) -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(color)
+            Text("\(Int(value))g")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color("AppTextPrimary").opacity(0.8))
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(color.opacity(colorScheme == .dark ? 0.15 : 0.1))
+        .clipShape(Capsule())
     }
+
+    private func _getFoodIcon(for name: String) -> String {
+        let lowerName = name.lowercased()
+        
+        if lowerName.contains("egg") { return "oval.portrait.fill" }
+        if lowerName.contains("fish") || lowerName.contains("tuna") || lowerName.contains("salmon") || lowerName.contains("cod") || lowerName.contains("shrimp") || lowerName.contains("prawn") { return "fish.fill" }
+        if lowerName.contains("milk") || lowerName.contains("dairy") || lowerName.contains("whey") || lowerName.contains("cheese") { return "refrigerator.fill" }
+        if lowerName.contains("bread") || lowerName.contains("toast") || lowerName.contains("bagel") || lowerName.contains("sandwich") || lowerName.contains("wrap") || lowerName.contains("burger") || lowerName.contains("pizza") || lowerName.contains("potato") || lowerName.contains("fries") { return "takeoutbag.and.cup.and.straw.fill" }
+        if lowerName.contains("salad") || lowerName.contains("lettuce") { return "leaf.fill" }
+        if lowerName.contains("apple") || lowerName.contains("banana") || lowerName.contains("orange") || lowerName.contains("citrus") || lowerName.contains("berry") || lowerName.contains("strawberry") || lowerName.contains("blueberry") || lowerName.contains("watermelon") { return "carrot.fill" }
+        if lowerName.contains("water") || lowerName.contains("drink") || lowerName.contains("honey") || lowerName.contains("syrup") { return "drop.fill" }
+        if lowerName.contains("coffee") || lowerName.contains("espresso") || lowerName.contains("latte") { return "cup.and.saucer.fill" }
+        
+        let teaTestString = lowerName.replacingOccurrences(of: "tea spoon", with: "")
+        let words = teaTestString.components(separatedBy: CharacterSet.alphanumerics.inverted)
+        if words.contains("tea") || words.contains("teas") { return "mug.fill" }
+        
+        if lowerName.contains("chocolate") || lowerName.contains("candy") || lowerName.contains("sweet") || lowerName.contains("ice cream") || lowerName.contains("dessert") || lowerName.contains("cookie") || lowerName.contains("biscuit") || lowerName.contains("cake") || lowerName.contains("muffin") { return "birthday.cake.fill" }
+        
+        return "fork.knife"
+    }
+
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.timeStyle = .short
+        return f
+    }()
     
     @ViewBuilder
     private func _buildToolsCarousel() -> some View {
@@ -888,13 +1018,22 @@ struct HomeScreen: View {
     private func _buildCompactToolButton(title: String, icon: String) -> some View {
         VStack(spacing: 8) {
             ZStack {
-                Circle()
-                    .fill(Color("AppTextPrimary").opacity(0.08))
-                    .frame(width: 56, height: 56)
+                // Glassy Squircle Background
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(Color("AppTextPrimary").opacity(colorScheme == .dark ? 0.1 : 0.05))
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .frame(width: 64, height: 64)
+                    .shadow(color: .black.opacity(colorScheme == .dark ? 0.2 : 0.05), radius: 8, x: 0, y: 4)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .stroke(.white.opacity(colorScheme == .dark ? 0.1 : 0.5), lineWidth: 0.5)
+                    )
 
                 Image(systemName: icon)
-                    .font(.title3)
-                    .foregroundStyle(Color("AppTextPrimary").opacity(0.6))
+                    .font(.system(size: 24))
+                    .foregroundStyle(Color("AppTextPrimary").opacity(0.8))
+                    .symbolEffect(.bounce, value: true) // iOS 17 bounce
             }
 
             Text(title)
@@ -908,6 +1047,7 @@ struct HomeScreen: View {
     @ViewBuilder
     private func _buildQuickMealInput() -> some View {
         HStack(spacing: 8) {
+            Color.clear.frame(width: 0, height: 28) // lock row height so buttons don't expand the field
             Image(systemName: "sparkles")
                 .font(.system(size: 14))
                 .foregroundStyle(colorScheme == .light ? Color(red: 0.3, green: 0.7, blue: 0.4) : Color("AppPrimaryAccent"))
@@ -919,23 +1059,15 @@ struct HomeScreen: View {
                 .foregroundStyle(Color("AppTextPrimary"))
                 .submitLabel(.send)
                 .onSubmit {
-                    if superwallManager.isPremium {
-                        Task { await logQuickMeal() }
-                    } else {
-                        superwallManager.showPaywall()
-                    }
+                    submitQuickMeal()
                 }
 
             if !quickMealText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Button {
-                    if superwallManager.isPremium {
-                        Task { await logQuickMeal() }
-                    } else {
-                        superwallManager.showPaywall()
-                    }
+                    submitQuickMeal()
                 } label: {
                     Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 28))
+                        .font(.system(size: 24))
                         .foregroundStyle(
                             LinearGradient(
                                 colors: themeManager.currentTheme.buttonGradient(for: colorScheme),
@@ -943,6 +1075,33 @@ struct HomeScreen: View {
                                 endPoint: .bottomTrailing
                             )
                         )
+                        .frame(width: 28, height: 28)
+                }
+                .transition(.scale.combined(with: .opacity))
+            } else if !savedFoods.isEmpty {
+                Button {
+                    isQuickMealFocused = false
+                    showSavedFoodsQuickPicker = true
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: themeManager.currentTheme.buttonGradient(for: colorScheme),
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 24, height: 24)
+                        Image(systemName: "bookmark.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                    .frame(width: 28, height: 28)
+                }
+                .popover(isPresented: $showSavedFoodsQuickPicker, arrowEdge: .top) {
+                    _savedFoodsQuickPicker()
+                        .presentationCompactAdaptation(.popover)
                 }
                 .transition(.scale.combined(with: .opacity))
             }
@@ -964,23 +1123,125 @@ struct HomeScreen: View {
         .onTapGesture {
             isQuickMealFocused = true
         }
-        .shadow(color: colorScheme == .dark ? Color("AppPrimaryAccent").opacity(0.15) : .white.opacity(0.15), radius: 8, x: 0, y: -2)
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.5 : 0.3), radius: 8, x: 0, y: 4)
+        .shadow(color: colorScheme == .dark ? Color("AppPrimaryAccent").opacity(0.15) : .clear, radius: 8, x: 0, y: -2)
+        .shadow(color: colorScheme == .dark ? .black.opacity(0.5) : .clear, radius: 8, x: 0, y: 4)
         .padding(.horizontal, 24)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: quickMealText.isEmpty)
+        .tutorialTarget(id: "quickMealInput")
         .id("quickMealInput")
+    }
+
+    private func logSavedFoodDirectly(_ food: SavedFood) {
+        food.lastUsedAt = Date()
+
+        let timestamp = Calendar.current.isDateInToday(selectedDate) ? Date() : selectedDate
+        let newItem = LoggedFood(
+            name: food.foodName,
+            timestamp: timestamp,
+            servingSizeDescription: food.servingSizeDescription,
+            servingAmount: 1.0,
+            caloriesPerServing: food.caloriesPerServing,
+            proteinPerServing: food.proteinPerServing,
+            carbsPerServing: food.carbsPerServing,
+            fatPerServing: food.fatPerServing,
+            fiberPerServing: food.fiberPerServing,
+            sugarPerServing: food.sugarPerServing,
+            saltPerServing: food.saltPerServing ?? 0,
+            potassiumPerServing: food.potassiumPerServing ?? 0,
+            barcode: food.barcode,
+            brand: food.brand
+        )
+        modelContext.insert(newItem)
+        try? modelContext.save()
+
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
+            allFoodLogs.insert(newItem, at: 0)
+        }
+
+        WidgetCenter.shared.reloadAllTimelines()
+        NotificationCenter.default.post(name: Notification.Name("FoodLogCreated"), object: nil)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        AnalyticsManager.shared.trackFoodLogged(name: food.foodName, calories: food.caloriesPerServing, source: .barcode)
+
+        Task.detached(priority: .background) {
+            if let userId = await UserSession.shared.getCurrentUserId() {
+                await MainActor.run { newItem.userId = userId }
+                await CloudSyncManager.shared.uploadFoodLogImmediately(newItem, userId: userId)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func _savedFoodsQuickPicker() -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Quick Log")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color("AppTextPrimary"))
+                Spacer()
+                NavigationLink(value: HomeDestination.savedFoods) {
+                    Text("All")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color("AppPrimaryAccent"))
+                }
+                .simultaneousGesture(TapGesture().onEnded { showSavedFoodsQuickPicker = false })
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+
+            ForEach(Array(quickPickerSavedFoods.enumerated()), id: \.element.id) { index, food in
+                Button {
+                    logSavedFoodDirectly(food)
+                    showSavedFoodsQuickPicker = false
+                } label: {
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(food.foodName)
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(Color("AppTextPrimary"))
+                                .lineLimit(1)
+                            Text("\(Int(food.caloriesPerServing)) kcal · \(food.servingSizeDescription)")
+                                .font(.caption2)
+                                .foregroundStyle(Color("AppTextPrimary").opacity(0.6))
+                                .lineLimit(1)
+                        }
+                        Spacer()
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(Color("AppPrimaryAccent"))
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                if index < quickPickerSavedFoods.count - 1 {
+                    Divider().padding(.leading, 14)
+                }
+            }
+        }
+        .padding(.bottom, 6)
+        .frame(width: 280)
+        .background(colorScheme == .dark ? Color(white: 0.14) : Color.white)
+        .presentationBackground(colorScheme == .dark ? Color(white: 0.14) : Color.white)
     }
 
     // MARK: - Core Functions
 
     @MainActor
     private func refreshData() async {
-        // Fetch user-scoped data
-        allFoodLogs = await UserScopedQuery.fetchFoodLogs(context: modelContext)
+        let refreshState = homeSignposter.beginInterval("refreshData")
+        defer { homeSignposter.endInterval("refreshData", refreshState) }
 
-        if let fetchedGoals = await UserScopedQuery.fetchUserGoals(context: modelContext) {
-            goals = fetchedGoals
-        }
+        // Fetch user-scoped data
+        let foodFetchState = homeSignposter.beginInterval("refreshData.fetchFoodLogs")
+        allFoodLogs = await UserScopedQuery.fetchFoodLogs(context: modelContext)
+        homeSignposter.endInterval("refreshData.fetchFoodLogs", foodFetchState)
+
+        let goalsFetchState = homeSignposter.beginInterval("refreshData.fetchUserGoals")
+        loadedGoals = await UserScopedQuery.fetchUserGoals(context: modelContext)
+        homeSignposter.endInterval("refreshData.fetchUserGoals", goalsFetchState)
 
         let streakResult = computeCalorieStreak()
         calorieStreak = streakResult.streak
@@ -998,8 +1259,6 @@ struct HomeScreen: View {
         // Schedule weekly weight logging reminder
         await scheduleWeeklyWeightReminder()
 
-        // Update animations with new data
-        // Update animations with new data
         updateAnimatedValues()
         
         // Preload images for current view
@@ -1007,7 +1266,7 @@ struct HomeScreen: View {
     }
 
     private func preloadImagesForSelectedDate() {
-        let logsToCheck = recentLogs
+        let logsToCheck = foodLogsToday
         
         Task(priority: .background) {
             for log in logsToCheck {
@@ -1040,7 +1299,7 @@ struct HomeScreen: View {
         }
 
         // Animate overflow calories with delay and bounce
-        let overflowAmount = max(0, newTotalCalories - goals.dailyCalories)
+        let overflowAmount = max(0, newTotalCalories - effectiveDailyCalories)
         let wasOverGoal = animatedOverflowCalories > 0
         let isNowOverGoal = overflowAmount > 0
 
@@ -1084,6 +1343,107 @@ struct HomeScreen: View {
 
         // Reload widgets when a log is deleted
         WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    private func retryAnalysis(for log: LoggedFood) {
+        guard log.isAnalysisFailed, let photoData = log.photoData, let image = UIImage(data: photoData) else { return }
+        // The card still reads "Analysis failed" until the async cleanup below flips it,
+        // so block a second tap landing in that window from submitting a duplicate analysis.
+        guard !retryingFoodIDs.contains(log.id) else { return }
+        retryingFoodIDs.insert(log.id)
+
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        let localFoodId = log.id.uuidString
+        let foodID = log.id
+
+        Task {
+            let userId = await UserSession.shared.getCurrentUserId()
+
+            // Clear the stale "failed" row from the original attempt BEFORE flipping the
+            // card into the analyzing state. The background poller fails any *analyzing*
+            // food that still has a `failed` row for its id, so if we marked this food
+            // analyzing first, the next poll (~1s) would re-stamp it "Analysis failed" and
+            // stop the eventual completed result from ever syncing back.
+            if let userId = userId {
+                await PendingAnalysisManager.shared.resolvePriorAnalyses(localFoodId: localFoodId, userId: userId)
+            }
+
+            // Now it's safe to show the analyzing state.
+            await MainActor.run {
+                log.name = "Analyzing food..."
+                log.isAnalysisFailed = false
+                log.isAnalyzing = true
+                try? modelContext.save()
+                retryingFoodIDs.remove(foodID)  // isAnalyzing now guards re-entry
+            }
+
+            if let userId = userId {
+                // Background-safe retry via Supabase
+                do {
+                    let analysisId = try await PendingAnalysisManager.shared.submitForAnalysis(
+                        image: image,
+                        localFoodId: localFoodId,
+                        userId: userId
+                    )
+                    print("🔄 Retry submitted: \(analysisId)")
+                } catch {
+                    print("⚠️ Retry background submission failed, trying immediate: \(error)")
+                    await retryImmediate(image: image, log: log, userId: userId)
+                }
+            } else {
+                await retryImmediate(image: image, log: log, userId: nil)
+            }
+        }
+    }
+
+    private func retryImmediate(image: UIImage, log: LoggedFood, userId: String?) async {
+        do {
+            let result = try await AIFoodScanner.shared.analyzeFood(image: image)
+            await MainActor.run {
+                log.name = result.name
+                log.servingSizeDescription = result.servingSize
+                log.caloriesPerServing = result.calories
+                log.proteinPerServing = result.protein
+                log.carbsPerServing = result.carbs
+                log.fatPerServing = result.fat
+                log.fiberPerServing = result.fiber
+                log.sugarPerServing = result.sugar
+                log.brand = "AI Analyzed"
+                log.aiIngredients = result.ingredients
+                log.aiIngredientCalories = result.ingredientCaloriesDictionary()
+                log.aiConfidence = result.confidence
+                log.isAnalyzing = false
+                log.isAnalysisFailed = false
+                try? modelContext.save()
+                NotificationCenter.default.post(name: Notification.Name("FoodLogCreated"), object: nil)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            }
+        } catch {
+            await MainActor.run {
+                log.name = "Analysis failed"
+                log.isAnalyzing = false
+                log.isAnalysisFailed = true
+                try? modelContext.save()
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            }
+        }
+    }
+
+    /// Gate the quick meal submission behind premium or a daily free-quota debit.
+    @MainActor
+    private func submitQuickMeal() {
+        let trimmed = quickMealText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        if storeKitManager.isPremium {
+            Task { await logQuickMeal() }
+        } else if usageLimitManager.canUseQuickMeal() {
+            usageLimitManager.recordQuickMeal()
+            Task { await logQuickMeal() }
+        } else {
+            showLimitReached = true
+        }
     }
 
     @MainActor
@@ -1800,53 +2160,34 @@ struct HomeScreen: View {
     private func _buildDynamicBackground() -> some View {
         ZStack {
             Color("AppPrimaryDark", bundle: nil).ignoresSafeArea()
-            
-            // Orb 1: Primary Theme Color (Top Left)
-            RadialGradient(
-                gradient: Gradient(colors: [
-                    colorScheme == .light 
-                        ? themeManager.currentTheme.primaryColor.opacity(0.4) 
-                        : themeManager.currentTheme.darkPrimaryColor.opacity(0.18),
-                    .clear
-                ]),
-                center: .topLeading,
-                startRadius: 50,
-                endRadius: 550
-            )
-            .offset(offset1)
-            .offset(x: -150, y: -150)
-            .ignoresSafeArea()
-            
-            // Orb 2: Complementary Color (Bottom Right)
-            RadialGradient(
-                gradient: Gradient(colors: [
-                    themeManager.currentTheme.complementaryColor.opacity(colorScheme == .light ? 0.35 : 0.15),
-                    .clear
-                ]),
-                center: .bottomTrailing,
-                startRadius: 100,
-                endRadius: 500
-            )
-            .offset(offset2)
-            .offset(x: 100, y: 150)
-            .ignoresSafeArea()
-            
-            // Orb 3 (Dark Mode Only): Adds depth
-            if colorScheme == .dark {
-                RadialGradient(gradient: Gradient(colors: [Color.white.opacity(0.05), .clear]), center: .bottomLeading, startRadius: 60, endRadius: 350)
-                    .offset(offset1).offset(x: -50, y: 120).ignoresSafeArea()
+
+            // Light-mode-only gradient orbs. Disabled in dark mode while we
+            // tune the new Discord-style palette — re-enable later if desired.
+            if colorScheme == .light {
+                RadialGradient(
+                    gradient: Gradient(colors: [
+                        themeManager.currentTheme.primaryColor.opacity(0.25),
+                        .clear
+                    ]),
+                    center: .topLeading,
+                    startRadius: 50,
+                    endRadius: 550
+                )
+                .offset(x: -80, y: -100)
+                .ignoresSafeArea()
+
+                RadialGradient(
+                    gradient: Gradient(colors: [
+                        themeManager.currentTheme.complementaryColor.opacity(0.2),
+                        .clear
+                    ]),
+                    center: .bottomTrailing,
+                    startRadius: 100,
+                    endRadius: 500
+                )
+                .offset(x: 50, y: 80)
+                .ignoresSafeArea()
             }
-        }
-        .blur(radius: 60)
-        .onAppear { animateOrbs() }
-    }
-    
-    private func animateOrbs() {
-        withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
-            offset1 = CGSize(width: 80, height: 60)
-        }
-        withAnimation(.easeInOut(duration: 10).repeatForever(autoreverses: true)) {
-            offset2 = CGSize(width: -100, height: -70)
         }
     }
 }
@@ -1941,16 +2282,24 @@ struct DateButton: View {
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject var themeManager: ThemeManager
 
+    private static let dayNumberFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "d"
+        return f
+    }()
+
+    private static let dayOfWeekFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "EEE"
+        return f
+    }()
+
     private var dayNumber: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "d"
-        return formatter.string(from: date)
+        Self.dayNumberFormatter.string(from: date)
     }
 
     private var dayOfWeek: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEE"
-        return formatter.string(from: date)
+        Self.dayOfWeekFormatter.string(from: date)
     }
 
     var body: some View {
@@ -1969,7 +2318,7 @@ struct DateButton: View {
                 if isInStreak {
                     Image(systemName: "flame.fill")
                         .font(.system(size: 8))
-                        .foregroundStyle(isSelected ? .white : .orange)
+                        .foregroundStyle(isSelected ? textColor : .orange)
                 } else if isToday {
                     Circle()
                         .fill(colorScheme == .light ? themeManager.currentTheme.primaryColor : themeManager.currentTheme.darkSecondaryColor)
@@ -1986,6 +2335,8 @@ struct DateButton: View {
                     .fill(backgroundColor)
                     .rotationEffect(.degrees(Double((Calendar.current.ordinality(of: .day, in: .era, for: date) ?? 0) * 137 % 360)))
             )
+            .padding(6)
+            .drawingGroup() // Optimize rendering of date button
         }
         .buttonStyle(.plain)
         .opacity(hasLogs || isSelected ? 1.0 : 0.4)
@@ -1993,7 +2344,11 @@ struct DateButton: View {
 
     private var textColor: Color {
         if isSelected {
-            return colorScheme == .light ? .white : .black
+            // For bright themes (Mango/Matcha) in light mode, use dark text for contrast
+            if colorScheme == .light && (themeManager.currentTheme == .mango || themeManager.currentTheme == .matcha) {
+                return Color.black.opacity(0.8)
+            }
+            return .white
         } else if hasLogs {
             return Color("AppTextPrimary").opacity(0.8)
         } else {
@@ -2076,17 +2431,17 @@ struct AnalyzingProgressView: View {
         ZStack {
             // Background circle
             Circle()
-                .stroke(Color("AppTextPrimary").opacity(0.15), lineWidth: 8)
-                .frame(width: 70, height: 70)
+                .stroke(Color("AppTextPrimary").opacity(0.15), lineWidth: 6)
+                .frame(width: 56, height: 56)
 
             // Spinning arc
             Circle()
                 .trim(from: 0, to: 0.25)
                 .stroke(
                     Color("AppSecondaryAccent"),
-                    style: StrokeStyle(lineWidth: 8, lineCap: .round)
+                    style: StrokeStyle(lineWidth: 6, lineCap: .round)
                 )
-                .frame(width: 70, height: 70)
+                .frame(width: 56, height: 56)
                 .rotationEffect(.degrees(isSpinning ? 360 : 0))
                 .animation(
                     .linear(duration: 1.0).repeatForever(autoreverses: false),
@@ -2203,8 +2558,35 @@ struct BlobShape3: Shape {
         path.addCurve(to: CGPoint(x: w * 0.5, y: 0.02),
                       control1: CGPoint(x: w * 0.02, y: h * 0.2),
                       control2: CGPoint(x: w * 0.1, y: 0.05))
-        
+
         path.closeSubpath()
         return path
+    }
+}
+
+// MARK: - Home slide-in modifier
+
+/// Subtle fade + slide-up entrance for top-level Home sections. Each section
+/// passes a small `delay` to stagger the animation. Replays on tab re-entry.
+private struct HomeSlideIn: ViewModifier {
+    let delay: Double
+    @State private var visible = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(visible ? 1 : 0)
+            .offset(y: visible ? 0 : 14)
+            .onAppear {
+                guard !visible else { return }
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.85).delay(delay)) {
+                    visible = true
+                }
+            }
+    }
+}
+
+private extension View {
+    func homeSlideIn(delay: Double = 0) -> some View {
+        modifier(HomeSlideIn(delay: delay))
     }
 }

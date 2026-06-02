@@ -24,6 +24,7 @@ struct ContentView: View {
 
     @EnvironmentObject var authManager: AuthManager
     @EnvironmentObject var deepLinkManager: DeepLinkManager
+    @EnvironmentObject var tabRouter: TabRouter
 
     // Password reset handling (at app level so it works during onboarding too)
     @State private var showPasswordReset = false
@@ -108,15 +109,8 @@ struct ContentView: View {
 //            }
         }
 
-        // ────────────────────────────────────────
-        //  CLOUD SYNC
-        // ────────────────────────────────────────
-        .task {
-            await CloudFoodSyncManager.shared.syncOnAppLaunch(context: modelContext)
-        }
-        .task {
-            await CloudFoodSyncManager.shared.syncOncePerDay(context: modelContext)
-        }
+        // Cloud sync is handled in YumoApp before the home screen appears.
+        // No duplicate sync needed here.
 
         // ────────────────────────────────────────
         //  PASSWORD RESET DEEP LINK
@@ -140,6 +134,17 @@ struct ContentView: View {
                 print("🔐 ContentView found pending password reset URL on appear")
                 showPasswordReset = true
             }
+            
+            // Check if we should show the scanner (if flagged during launch)
+            if deepLinkManager.showScanner {
+                print("📷 ContentView found pending Scanner request on appear")
+                // It's already bound via the fullScreenCover below, so it will present automatically.
+            }
+        }
+        // Handle QuickScan Deep Link
+        .fullScreenCover(isPresented: $deepLinkManager.showScanner) {
+            AICameraScanView()
+                .environmentObject(tabRouter)
         }
     }
 }

@@ -61,7 +61,7 @@ We'd love your feedback on:
 ### How to Give Feedback
 
 - Shake your device to send feedback via TestFlight
-- Email: support@mochimeter.app
+- Email: support@mochimeter.com.au
 - Use the in-app feedback option in Settings
 
 Thank you for helping us build MochiMeter!

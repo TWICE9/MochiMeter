@@ -82,7 +82,10 @@ final class AuthManager: ObservableObject {
                 
                 // Ensure OneSignal/Widgets have the ID too
                 await UserSession.shared.setUserId(userId)
-                
+
+                // Push any pending device token
+                await DeviceTokenManager.shared.savePendingTokenIfNeeded()
+
             } else {
                 self.currentUser = nil
             }
@@ -105,7 +108,7 @@ final class AuthManager: ObservableObject {
             AnalyticsManager.shared.reset()
             
             // Reset Premium Status
-            SuperwallManager.shared.reset()
+            StoreKitManager.shared.reset()
         } catch {
             print("⚠️ Error signing out:", error)
         }
@@ -118,7 +121,7 @@ final class AuthManager: ObservableObject {
         self.currentUser = nil
         await UserSession.shared.clearUserId()
         AnalyticsManager.shared.reset()
-        SuperwallManager.shared.reset()
+        StoreKitManager.shared.reset()
     }
 
     // MARK: - Complete Sign In (with data migration)
@@ -149,8 +152,11 @@ final class AuthManager: ObservableObject {
             "email": user.email ?? ""
         ])
         
-        // 5. Check premium status for newly signed-in user
-        await SuperwallManager.shared.checkPremiumStatus()
+        // 5. Push any pending device token now that user is logged in
+        await DeviceTokenManager.shared.savePendingTokenIfNeeded()
+
+        // 6. Check premium status for newly signed-in user
+        await StoreKitManager.shared.checkPremiumStatus()
     }
     
     /// Migrates local data from uppercase userId to lowercase userId
