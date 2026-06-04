@@ -87,6 +87,7 @@ struct RecipeListView: View {
                 .padding(.horizontal, 24)
                 .padding(.bottom, 100)
                 .padding(.top, 20)
+                .readableContentColumn(640)
             }
             .scrollContentBackground(.hidden)
         }

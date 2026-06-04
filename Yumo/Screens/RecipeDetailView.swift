@@ -143,6 +143,7 @@ struct RecipeDetailView: View {
                     .padding(.horizontal, 24)
                     .padding(.bottom, 80)
                 }
+                .readableContentColumn(600)
             }
             .scrollContentBackground(.hidden)
             

@@ -141,9 +141,10 @@ struct WaterScreen: View {
                     
                     Text("\(Int(totalWaterToday)) of \(Int(goals.dailyWaterML)) mL")
                         .font(.title3).bold().foregroundStyle(Color("AppTextPrimary"))
-                    
+
                     Spacer()
                 }
+                .readableContentColumn(600)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

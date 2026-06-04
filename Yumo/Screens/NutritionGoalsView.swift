@@ -163,6 +163,7 @@ struct NutritionGoalsView: View {
                 }
                 .padding(.top, 24)
                 .padding(.bottom, 120) // Extra space so content clears bottom nav/tab bar
+                .readableContentColumn(600)
             }
             .scrollIndicators(.hidden)
             .scrollContentBackground(.hidden)

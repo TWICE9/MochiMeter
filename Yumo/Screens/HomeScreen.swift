@@ -234,6 +234,8 @@ struct HomeScreen: View {
                         .onTapGesture {
                             isQuickMealFocused = false
                         }
+                        // iPad: center the feed in a readable column (background stays full-bleed).
+                        .readableContentColumn(640)
                     }
                     .scrollIndicators(.hidden)
                     .scrollContentBackground(.hidden)

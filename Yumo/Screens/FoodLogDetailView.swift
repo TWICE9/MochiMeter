@@ -209,10 +209,9 @@ struct FoodLogDetailView: View {
                     Spacer(minLength: 60)
                 }
                 .padding(.bottom, 80)
-                // Hard-clamp content width to ScrollView container.
-                // Prevents any child's intrinsic width from inflating
-                // the content width and unlocking horizontal bounce.
-                .containerRelativeFrame(.horizontal)
+                // iPad: cap to a readable column. iPhone: keep the container-width clamp
+                // that disables horizontal rubber-band bounce (see note below).
+                .readableContentColumn(600, clampOnCompact: true)
             }
             .scrollContentBackground(.hidden)
             // Disable horizontal rubber-band bounce. Even with the

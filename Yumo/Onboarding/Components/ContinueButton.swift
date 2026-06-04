@@ -32,5 +32,7 @@ struct ContinueButton: View {
         .disabled(!isEnabled)
         .padding(.horizontal, 24)
         .padding(.bottom, 24)
+        // iPad: keep the primary CTA a sensible width instead of a screen-wide bar.
+        .readableContentColumn(460)
     }
 }

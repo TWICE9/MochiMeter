@@ -266,6 +266,7 @@ struct SearchScreen: View {
 
                     Spacer(minLength: 40)
                 }
+                .readableContentColumn(640)
             }
             .scrollIndicators(.hidden)
             .scrollContentBackground(.hidden)

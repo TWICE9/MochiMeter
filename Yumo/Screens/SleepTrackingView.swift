@@ -90,6 +90,7 @@ struct SleepTrackingView: View {
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 24)
+                    .readableContentColumn(640)
                 }
             }
             .task {

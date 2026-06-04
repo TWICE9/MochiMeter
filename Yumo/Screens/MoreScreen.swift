@@ -300,6 +300,7 @@ struct MoreScreen: View {
                         // Bottom padding for tab bar
                         Color.clear.frame(height: 80)
                     }
+                    .readableContentColumn(640)
                 }
             }
             .toolbar {

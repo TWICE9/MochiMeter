@@ -109,6 +109,7 @@ struct SavedFoodsView: View {
                     }
                 }
             }
+            .readableContentColumn(640)
         }
         .navigationTitle("Saved Foods")
         .navigationBarTitleDisplayMode(.large)

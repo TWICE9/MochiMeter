@@ -122,6 +122,7 @@ struct ShoppingListView: View {
                                     }
                                 }
                             }
+                            .readableContentColumn(640)
                         }
                         .transition(.opacity)
                     }

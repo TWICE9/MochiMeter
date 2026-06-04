@@ -103,6 +103,7 @@ struct RemindersView: View {
                 }
                 .listStyle(.plain) // ⭐️ FIX: Use plain style to respect our custom spacing
                 .scrollContentBackground(.hidden) // Make the list transparent
+                .readableContentColumn(640)
             }
         }
         .navigationTitle("Reminders")

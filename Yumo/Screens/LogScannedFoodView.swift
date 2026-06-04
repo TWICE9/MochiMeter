@@ -331,6 +331,7 @@ struct LogScannedFoodView: View {
                     .padding(.horizontal, 20)
                     .padding(.bottom, 40)
                 }
+                .readableContentColumn(600)
             }
         }
         .navigationBarHidden(true)

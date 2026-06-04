@@ -933,6 +933,7 @@ struct ReportsView: View {
                     Spacer()
                 }
                 .padding(.bottom, 100)
+                .readableContentColumn(640)
             }
             .environment(\.reportsSlideInGeneration, slideInGeneration)
             .environmentObject(slideInTracker)

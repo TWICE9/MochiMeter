@@ -87,6 +87,7 @@ struct StrainActivityView: View {
                         Spacer(minLength: 40)
                     }
                     .padding(.bottom, 20)
+                    .readableContentColumn(640)
                 }
                 .scrollIndicators(.hidden)
             }

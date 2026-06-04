@@ -328,7 +328,8 @@ struct SettingsScreen: View {
                         }
                         .padding(.bottom, 80)
                     }
-                    .containerRelativeFrame(.horizontal)
+                    // iPad: cap to a readable column. iPhone: keep the container-width clamp.
+                    .readableContentColumn(600, clampOnCompact: true)
                 }
                 .lockVerticalScroll()
                 .scrollBounceBehavior(.basedOnSize, axes: .vertical)

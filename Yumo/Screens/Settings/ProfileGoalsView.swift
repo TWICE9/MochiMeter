@@ -396,6 +396,7 @@ struct ProfileGoalsView: View {
                 }
                 .padding(.top, 24)
                 .padding(.bottom, 120)
+                .readableContentColumn(600)
             }
             .scrollDismissesKeyboard(.interactively)
         }

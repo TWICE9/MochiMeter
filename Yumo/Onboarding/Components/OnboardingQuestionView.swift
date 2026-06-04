@@ -107,5 +107,8 @@ struct OnboardingQuestionView<Content: View, Footer: View>: View {
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
         }
+        // iPad: center the whole onboarding column instead of stretching edge-to-edge.
+        // No-op on iPhone (compact width).
+        .readableContentColumn(560)
     }
 }

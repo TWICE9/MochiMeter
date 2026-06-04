@@ -106,6 +106,7 @@ struct CreateReminderView: View {
                         Spacer()
                     }
                     .padding(24)
+                    .readableContentColumn(560)
                 }
             }
             .dismissKeyboardOnTap()

@@ -1085,6 +1085,7 @@ struct HealthRingsView: View {
                     mainScrollContent
                 }
                 .padding(.bottom, 80)
+                .readableContentColumn(640)
             }
             .environment(\.slideInGeneration, slideInGeneration)
             .scrollIndicators(.hidden)
