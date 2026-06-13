@@ -17,15 +17,7 @@ struct SessionDetailView: View {
     @State private var cachedInfo: TypeInfo = .placeholder
 
     private var tint: Color {
-        switch session.sessionType {
-        case .easy, .recovery: return .green
-        case .long:            return .blue
-        case .tempo:           return .orange
-        case .intervals:       return .red
-        case .race:            return .purple
-        case .cross:           return .cyan
-        case .rest:            return Color.gray
-        }
+        session.sessionType.tint
     }
 
     private var icon: String {
@@ -271,11 +263,11 @@ struct SessionDetailView: View {
 
     private var heartRateZoneCard: some View {
         let zones: [(name: String, color: Color, range: String)] = [
-            ("Z1", .blue,   "50–60%"),
-            ("Z2", .green,  "61–70%"),
-            ("Z3", .yellow, "71–80%"),
-            ("Z4", .orange, "81–90%"),
-            ("Z5", .red,    "91–100%"),
+            ("Z1", .runBlue,   "50–60%"),
+            ("Z2", .runDone,  "61–70%"),
+            ("Z3", .runYellow, "71–80%"),
+            ("Z4", .runOrange, "81–90%"),
+            ("Z5", .runRed,    "91–100%"),
         ]
         return sectionCard(icon: "heart.fill", title: "Heart Rate Zones", tint: tint) {
             VStack(alignment: .leading, spacing: 14) {
@@ -318,17 +310,17 @@ struct SessionDetailView: View {
     // MARK: - Warm-Up
 
     private var warmupCard: some View {
-        sectionCard(icon: "sun.horizon.fill", title: "Warm-Up", tint: .orange) {
+        sectionCard(icon: "sun.horizon.fill", title: "Warm-Up", tint: .runOrange) {
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(Array(info.warmupSteps.enumerated()), id: \.offset) { i, step in
                     HStack(alignment: .top, spacing: 12) {
                         ZStack {
                             Circle()
-                                .fill(Color.orange.opacity(0.15))
+                                .fill(Color.runOrange.opacity(0.15))
                                 .frame(width: 26, height: 26)
                             Text("\(i + 1)")
                                 .font(.caption.weight(.bold))
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(.runOrange)
                         }
                         Text(step)
                             .font(.subheadline)
@@ -344,17 +336,17 @@ struct SessionDetailView: View {
     // MARK: - Cool-Down
 
     private var cooldownCard: some View {
-        sectionCard(icon: "snowflake", title: "Cool-Down", tint: .blue) {
+        sectionCard(icon: "snowflake", title: "Cool-Down", tint: .runBlue) {
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(Array(info.cooldownSteps.enumerated()), id: \.offset) { i, step in
                     HStack(alignment: .top, spacing: 12) {
                         ZStack {
                             Circle()
-                                .fill(Color.blue.opacity(0.12))
+                                .fill(Color.runBlue.opacity(0.12))
                                 .frame(width: 26, height: 26)
                             Text("\(i + 1)")
                                 .font(.caption.weight(.bold))
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(.runBlue)
                         }
                         Text(step)
                             .font(.subheadline)
@@ -370,7 +362,7 @@ struct SessionDetailView: View {
     // MARK: - Plan Description
 
     private var planDescriptionCard: some View {
-        sectionCard(icon: "sparkles", title: "Coach's Notes", tint: .purple) {
+        sectionCard(icon: "sparkles", title: "Coach's Notes", tint: .runAccent) {
             Text(session.sessionDescription)
                 .font(.subheadline)
                 .foregroundStyle(secondaryText)
@@ -418,8 +410,8 @@ struct SessionDetailView: View {
             .font(.headline)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
-            .background(session.isCompleted ? Color.green.opacity(0.2) : tint)
-            .foregroundStyle(session.isCompleted ? Color.green : .white)
+            .background(session.isCompleted ? Color.runDone.opacity(0.2) : tint)
+            .foregroundStyle(session.isCompleted ? Color.runDone : .white)
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
         .buttonStyle(.plain)

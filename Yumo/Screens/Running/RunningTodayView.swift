@@ -115,7 +115,7 @@ private struct TrainingCalendarView: View, Equatable {
         planTabSignposter.emitEvent("TrainingCalendarView.body", "weeks=\(cards.count)")
         return VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 8) {
-                Image(systemName: "calendar").foregroundStyle(Color.purple)
+                Image(systemName: "calendar").foregroundStyle(Color.runAccent)
                 Text("Training Calendar").font(.headline).foregroundStyle(primaryText)
             }
             .padding(.horizontal, 24)
@@ -211,8 +211,8 @@ private struct PlanWeekCardView: View, Equatable {
     }
 
     private var primaryText: Color   { Color("AppTextPrimary") }
-    private var secondaryText: Color { Color("AppTextPrimary").opacity(0.8) }
-    private var tertiaryText: Color  { Color("AppTextPrimary").opacity(0.5) }
+    private var secondaryText: Color { Color("AppTextPrimary").opacity(0.9) }
+    private var tertiaryText: Color  { Color("AppTextPrimary").opacity(0.72) }
 
     var body: some View {
         // Per-cell body emit. Should fire only on first mount or when
@@ -251,13 +251,13 @@ private struct PlanWeekCardView: View, Equatable {
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(Capsule().fill(card.isCurrent ? Color.purple : Color.gray.opacity(0.5)))
+                        .background(Capsule().fill(card.isCurrent ? Color.runAccent : Color.gray.opacity(0.5)))
                     if card.isCurrent {
                         Text("NOW")
                             .font(.caption2.weight(.bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 7).padding(.vertical, 3)
-                            .background(Capsule().fill(Color.green))
+                            .background(Capsule().fill(Color.runDone))
                     }
                 }
                 if card.totalKm > 0 {
@@ -270,7 +270,7 @@ private struct PlanWeekCardView: View, Equatable {
             if card.runsCount > 0 {
                 Text("\(card.doneRunsCount)/\(card.runsCount)")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(card.doneRunsCount == card.runsCount ? Color.green : tertiaryText)
+                    .foregroundStyle(card.doneRunsCount == card.runsCount ? Color.runDone : tertiaryText)
             }
         }
     }
@@ -347,7 +347,7 @@ private struct PlanWeekCardView: View, Equatable {
                                 Text(suffix)
                             }
                             .font(.caption2)
-                            .foregroundStyle(Color.purple.opacity(0.8))
+                            .foregroundStyle(Color.runAccent.opacity(0.8))
                         }
                     }
                 }
@@ -358,7 +358,7 @@ private struct PlanWeekCardView: View, Equatable {
             if row.isRun {
                 Image(systemName: row.isCompleted ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
-                    .foregroundStyle(row.isCompleted ? .green : Color.gray.opacity(0.3))
+                    .foregroundStyle(row.isCompleted ? .runDone : Color.gray.opacity(0.3))
             }
         }
         .padding(.vertical, 8)
@@ -511,8 +511,8 @@ struct RunningTodayView<BelowContent: View>: View {
 
     // Mirror main app text colors exactly
     private var primaryText: Color { Color("AppTextPrimary") }
-    private var secondaryText: Color { Color("AppTextPrimary").opacity(0.8) }
-    private var tertiaryText: Color { Color("AppTextPrimary").opacity(0.5) }
+    private var secondaryText: Color { Color("AppTextPrimary").opacity(0.9) }
+    private var tertiaryText: Color { Color("AppTextPrimary").opacity(0.72) }
 
     private var unitLabel: String { isImperial ? "mi" : "km" }
     /// Reads from the cached value rather than recomputing
@@ -637,7 +637,7 @@ struct RunningTodayView<BelowContent: View>: View {
                     let rowMeta = meta[s.id]
                     let cross = rowMeta?.crossActivities ?? []
                     let isCrossOnly = rowMeta?.isCrossOnly ?? false
-                    let tint: Color = isCrossOnly ? .purple : Self.tintForType(s.sessionType)
+                    let tint: Color = isCrossOnly ? RunningSessionType.cross.tint : Self.tintForType(s.sessionType)
                     let label: String = isCrossOnly
                         ? cross.map(\.rawValue).joined(separator: " + ")
                         : s.sessionType.displayLabel
@@ -815,15 +815,7 @@ struct RunningTodayView<BelowContent: View>: View {
     }
 
     static func tintForType(_ type: RunningSessionType) -> Color {
-        switch type {
-        case .easy, .recovery: return .green
-        case .long:            return .blue
-        case .tempo:           return .orange
-        case .intervals:       return .red
-        case .race:            return .purple
-        case .cross:           return .teal
-        case .rest:            return .gray
-        }
+        type.tint
     }
 
     static func formatDistance(_ km: Double, isImperial: Bool) -> String {
@@ -896,7 +888,7 @@ struct RunningTodayView<BelowContent: View>: View {
         HStack(spacing: 12) {
             Image(systemName: "hourglass")
                 .font(.subheadline.weight(.bold))
-                .foregroundStyle(Color.purple)
+                .foregroundStyle(Color.runAccent)
             Text(message)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(primaryText)
@@ -911,7 +903,7 @@ struct RunningTodayView<BelowContent: View>: View {
                 .fill(.ultraThinMaterial)
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Color.purple.opacity(0.3), lineWidth: 1)
+                        .stroke(Color.runAccent.opacity(0.3), lineWidth: 1)
                 )
                 .shadow(color: .black.opacity(colorScheme == .dark ? 0.4 : 0.15), radius: 12, y: 4)
         )
@@ -1119,17 +1111,17 @@ struct RunningTodayView<BelowContent: View>: View {
         HStack(alignment: .top, spacing: 12) {
             ZStack {
                 Circle()
-                    .fill(Color.purple.opacity(0.18))
+                    .fill(Color.runAccent.opacity(0.18))
                     .frame(width: 36, height: 36)
                 Image(systemName: "sparkles")
                     .font(.subheadline.weight(.bold))
-                    .foregroundColor(.purple)
+                    .foregroundColor(.runAccent)
             }
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Plan adjusted")
                     .font(.caption.weight(.bold))
-                    .foregroundColor(.purple)
+                    .foregroundColor(.runAccent)
                 Text(adaptation.summary)
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(primaryText)
@@ -1163,11 +1155,7 @@ struct RunningTodayView<BelowContent: View>: View {
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(Color.purple.opacity(0.10))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.purple.opacity(0.30), lineWidth: 1)
-                )
+                .fill(Color.runAccent.opacity(0.10))
         )
         .padding(.horizontal, 24)
         .transition(.asymmetric(
@@ -1201,11 +1189,11 @@ struct RunningTodayView<BelowContent: View>: View {
                 Text(isAdapting ? "Adjusting your plan…" : "Fine-tune Plan")
             }
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.purple)
+            .foregroundStyle(.runAccent)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-            .background(RoundedRectangle(cornerRadius: 14).fill(Color.purple.opacity(0.10)))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.purple.opacity(0.30), lineWidth: 1))
+            .background(RoundedRectangle(cornerRadius: 14).fill(Color.runAccent.opacity(0.10)))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.runAccent.opacity(0.30), lineWidth: 1))
         }
         .buttonStyle(.plain)
         .disabled(isAdapting)
@@ -1274,10 +1262,10 @@ struct RunningTodayView<BelowContent: View>: View {
                 HStack(spacing: 16) {
                     ZStack {
                         Circle()
-                            .fill(Color.green.opacity(0.15))
+                            .fill(Color.runDone.opacity(0.15))
                             .frame(width: 48, height: 48)
                         Image(systemName: "figure.run")
-                            .foregroundStyle(Color.green)
+                            .foregroundStyle(Color.runDone)
                             .font(.title3)
                     }
                     
@@ -1312,22 +1300,12 @@ struct RunningTodayView<BelowContent: View>: View {
         let headerTitle: String = isSelectedToday
             ? "Today's Session"
             : selectedDate.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
-        let tint: Color = selectedSession.map { tintFor($0) } ?? .purple
+        let tint: Color = selectedSession.map { tintFor($0) } ?? .runAccent
 
         return ZStack {
-            // Gradient background — distinct from every other frosted card
+            // Standard app card background — flat, no border, matches the other cards.
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [tint.opacity(0.14), tint.opacity(0.05)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
-            // Tinted border
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(tint.opacity(0.35), lineWidth: 1.5)
+                .fill(Color("AppCardBackground"))
 
             VStack(alignment: .leading, spacing: 16) {
                 // Header
@@ -1469,7 +1447,7 @@ struct RunningTodayView<BelowContent: View>: View {
                                 .font(.title2.weight(.bold))
                                 .foregroundStyle(primaryText)
                             if session.isCompleted {
-                                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).font(.headline)
+                                Image(systemName: "checkmark.circle.fill").foregroundStyle(.runDone).font(.headline)
                             } else if session.skipped {
                                 Image(systemName: "forward.fill").foregroundStyle(tertiaryText).font(.subheadline)
                             }
@@ -1565,11 +1543,11 @@ struct RunningTodayView<BelowContent: View>: View {
                         HStack(spacing: 14) {
                             ZStack {
                                 Circle()
-                                    .fill(Color.green.opacity(0.08))
+                                    .fill(Color.runDone.opacity(0.08))
                                     .frame(width: 52, height: 52)
                                 Image(systemName: "checkmark.circle.fill")
                                     .font(.system(size: 24, weight: .bold))
-                                    .foregroundStyle(Color.green.opacity(0.75))
+                                    .foregroundStyle(Color.runDone.opacity(0.75))
                             }
                             VStack(alignment: .leading, spacing: 5) {
                                 HStack(spacing: 8) {
@@ -1578,15 +1556,15 @@ struct RunningTodayView<BelowContent: View>: View {
                                         .foregroundStyle(primaryText)
                                     Text("LOGGED")
                                         .font(.caption2.weight(.bold))
-                                        .foregroundStyle(Color.green)
+                                        .foregroundStyle(Color.runDone)
                                         .padding(.horizontal, 6).padding(.vertical, 2)
-                                        .background(Capsule().fill(Color.green.opacity(0.12)))
+                                        .background(Capsule().fill(Color.runDone.opacity(0.12)))
                                 }
                                 if let source = session.completedSource {
                                     HStack(spacing: 4) {
                                         Image(systemName: source == "healthkit" ? "heart.fill" : "hand.tap.fill")
                                             .font(.caption2)
-                                            .foregroundStyle(source == "healthkit" ? Color.pink.opacity(0.8) : secondaryText)
+                                            .foregroundStyle(source == "healthkit" ? Color.runPink.opacity(0.8) : secondaryText)
                                         Text(source == "healthkit" ? "Apple Health" : "Manual entry")
                                             .font(.caption)
                                             .foregroundStyle(secondaryText)
@@ -1616,7 +1594,6 @@ struct RunningTodayView<BelowContent: View>: View {
                     .background(
                         RoundedRectangle(cornerRadius: 14)
                             .fill(Color.primary.opacity(0.04))
-                            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.green.opacity(0.15), lineWidth: 1))
                     )
                     .contentShape(RoundedRectangle(cornerRadius: 14))
                 }
@@ -1644,8 +1621,8 @@ struct RunningTodayView<BelowContent: View>: View {
                             .font(.headline)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
-                            .background(Color.orange.opacity(0.14))
-                            .foregroundStyle(Color.orange)
+                            .background(Color.runOrange.opacity(0.14))
+                            .foregroundStyle(Color.runOrange)
                             .clipShape(RoundedRectangle(cornerRadius: 14))
                         }
                         .buttonStyle(.plain)
@@ -1679,8 +1656,8 @@ struct RunningTodayView<BelowContent: View>: View {
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(session.isCompleted ? Color.green.opacity(0.18) : tint.opacity(0.14))
-                        .foregroundStyle(session.isCompleted ? Color.green : tint)
+                        .background(session.isCompleted ? Color.runDone.opacity(0.18) : tint.opacity(0.14))
+                        .foregroundStyle(session.isCompleted ? Color.runDone : tint)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
                     .buttonStyle(.plain)
@@ -1703,8 +1680,8 @@ struct RunningTodayView<BelowContent: View>: View {
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(Color.orange.opacity(0.14))
-                        .foregroundStyle(Color.orange)
+                        .background(Color.runOrange.opacity(0.14))
+                        .foregroundStyle(Color.runOrange)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
                     .buttonStyle(.plain)
@@ -1739,11 +1716,11 @@ struct RunningTodayView<BelowContent: View>: View {
             HStack(spacing: 14) {
                 ZStack {
                     Circle()
-                        .fill(hasCross ? Color.purple.opacity(0.14) : Color.gray.opacity(0.12))
+                        .fill(hasCross ? Color.runAccent.opacity(0.14) : Color.gray.opacity(0.12))
                         .frame(width: 48, height: 48)
                     Image(systemName: crossIconName)
                         .font(.title3)
-                        .foregroundStyle(hasCross ? Color.purple : tertiaryText)
+                        .foregroundStyle(hasCross ? Color.runAccent : tertiaryText)
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     Text(hasCross ? crossActivityTitle(crossActivities) : "Rest Day")
@@ -1774,8 +1751,8 @@ struct RunningTodayView<BelowContent: View>: View {
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
-                        .background(Color.orange.opacity(0.14))
-                        .foregroundStyle(Color.orange)
+                        .background(Color.runOrange.opacity(0.14))
+                        .foregroundStyle(Color.runOrange)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
                     .buttonStyle(.plain)
@@ -1831,11 +1808,11 @@ struct RunningTodayView<BelowContent: View>: View {
                 HStack(spacing: 14) {
                     ZStack {
                         Circle()
-                            .fill(Color.orange.opacity(0.08))
+                            .fill(Color.runOrange.opacity(0.08))
                             .frame(width: 52, height: 52)
                         Image(systemName: "figure.run")
                             .font(.system(size: 24, weight: .bold))
-                            .foregroundStyle(Color.orange.opacity(0.75))
+                            .foregroundStyle(Color.runOrange.opacity(0.75))
                     }
                     VStack(alignment: .leading, spacing: 5) {
                         HStack(spacing: 8) {
@@ -1844,9 +1821,9 @@ struct RunningTodayView<BelowContent: View>: View {
                                 .foregroundStyle(primaryText)
                             Text("UNLOGGED")
                                 .font(.caption2.weight(.bold))
-                                .foregroundStyle(Color.orange)
+                                .foregroundStyle(Color.runOrange)
                                 .padding(.horizontal, 6).padding(.vertical, 2)
-                                .background(Capsule().fill(Color.orange.opacity(0.12)))
+                                .background(Capsule().fill(Color.runOrange.opacity(0.12)))
                         }
                         Text("from \(workout.sourceName) · \(workout.date.formatted(.dateTime.hour().minute()))")
                             .font(.caption)
@@ -1877,7 +1854,6 @@ struct RunningTodayView<BelowContent: View>: View {
             .background(
                 RoundedRectangle(cornerRadius: 14)
                     .fill(Color.primary.opacity(0.04))
-                    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.orange.opacity(0.15), lineWidth: 1))
             )
             .contentShape(RoundedRectangle(cornerRadius: 14))
         }
@@ -1898,16 +1874,16 @@ struct RunningTodayView<BelowContent: View>: View {
         FrostedGlassContainer {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 8) {
-                    Image(systemName: "calendar").foregroundStyle(Color.purple)
+                    Image(systemName: "calendar").foregroundStyle(Color.runAccent)
                     Text("Schedule").font(.headline).foregroundStyle(primaryText)
                     Spacer()
                     Button { onSwitchToTab(.plan) } label: {
                         Text("Full Plan")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.purple)
+                            .foregroundStyle(.runAccent)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
-                            .background(Capsule().fill(Color.purple.opacity(0.1)))
+                            .background(Capsule().fill(Color.runAccent.opacity(0.1)))
                     }
                     .buttonStyle(.plain)
                 }
@@ -1925,7 +1901,7 @@ struct RunningTodayView<BelowContent: View>: View {
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text("Wk \(group.week)")
                                         .font(.caption2.weight(.bold))
-                                        .foregroundStyle(group.week == selectedWeekNumber ? Color.purple : tertiaryText)
+                                        .foregroundStyle(group.week == selectedWeekNumber ? Color.runAccent : tertiaryText)
                                         .padding(.leading, 2)
                                     HStack(spacing: 4) {
                                         ForEach(group.sessions, id: \.id) { session in
@@ -2031,10 +2007,10 @@ struct RunningTodayView<BelowContent: View>: View {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .center, spacing: 14) {
                         ZStack {
-                            Circle().fill(Color.purple.opacity(0.15)).frame(width: 48, height: 48)
+                            Circle().fill(Color.runAccent.opacity(0.15)).frame(width: 48, height: 48)
                             Image(systemName: "flag.checkered")
                                 .font(.title3.weight(.bold))
-                                .foregroundStyle(Color.purple)
+                                .foregroundStyle(Color.runAccent)
                         }
 
                         Text(title)
@@ -2074,7 +2050,7 @@ struct RunningTodayView<BelowContent: View>: View {
         VStack(alignment: .trailing, spacing: 2) {
             Text(value)
                 .font(.title3.weight(.bold).monospacedDigit())
-                .foregroundStyle(Color.purple)
+                .foregroundStyle(Color.runAccent)
             if !unit.isEmpty {
                 Text(unit)
                     .font(.caption2.weight(.semibold))
@@ -2103,10 +2079,10 @@ struct RunningTodayView<BelowContent: View>: View {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack(spacing: 10) {
                         ZStack {
-                            Circle().fill(Color.purple.opacity(0.12)).frame(width: 38, height: 38)
+                            Circle().fill(Color.runAccent.opacity(0.12)).frame(width: 38, height: 38)
                             Image(systemName: "figure.run")
                                 .font(.subheadline.weight(.bold))
-                                .foregroundStyle(Color.purple)
+                                .foregroundStyle(Color.runAccent)
                         }
                         // Lead with the runner's race / event name when set —
                         // it's the most personal, motivating string we have.
@@ -2165,18 +2141,18 @@ struct RunningTodayView<BelowContent: View>: View {
                     Divider().opacity(0.3)
 
                     HStack(spacing: 12) {
-                        overviewStat(value: "\(plan.totalWeeks)", unit: "wks", label: "Total", color: .purple)
-                        overviewStat(value: "\(done)", unit: "/\(runsCount)", label: "Done", color: .green)
+                        overviewStat(value: "\(plan.totalWeeks)", unit: "wks", label: "Total", color: .runAccent)
+                        overviewStat(value: "\(done)", unit: "/\(runsCount)", label: "Done", color: .runDone)
                         if let daysLeft = summary.daysToRace {
-                            overviewStat(value: "\(max(0, daysLeft))", unit: "days", label: "To race", color: .orange)
+                            overviewStat(value: "\(max(0, daysLeft))", unit: "days", label: "To race", color: .runOrange)
                         } else if let goalSecs = plan.targetRaceGoalTimeSeconds {
-                            overviewStat(value: formatSeconds(goalSecs), unit: "", label: "Goal time", color: .purple)
+                            overviewStat(value: formatSeconds(goalSecs), unit: "", label: "Goal time", color: .runAccent)
                         }
                     }
 
                     if runsCount > 0 {
                         VStack(alignment: .leading, spacing: 4) {
-                            ProgressView(value: Double(done), total: Double(runsCount)).tint(.purple)
+                            ProgressView(value: Double(done), total: Double(runsCount)).tint(.runAccent)
                             Text("\(done) of \(runsCount) sessions complete")
                                 .font(.caption).foregroundStyle(tertiaryText)
                         }
@@ -2204,23 +2180,23 @@ struct RunningTodayView<BelowContent: View>: View {
         return FrostedGlassContainer {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 8) {
-                    Image(systemName: "map.fill").foregroundStyle(Color.blue)
+                    Image(systemName: "map.fill").foregroundStyle(Color.runBlue)
                     Text("Plan Distance").font(.headline).foregroundStyle(primaryText)
                     Spacer()
                     Text(String(format: "%.0f%%", fraction * 100))
                         .font(.subheadline.weight(.bold))
-                        .foregroundStyle(fraction >= 1.0 ? Color.green : Color.blue)
+                        .foregroundStyle(fraction >= 1.0 ? Color.runDone : Color.runBlue)
                 }
 
                 Divider().opacity(0.3)
 
                 HStack(spacing: 12) {
                     overviewStat(value: String(format: "%.1f", loggedDisplay), unit: unitLabel,
-                                 label: "Logged", color: .green)
+                                 label: "Logged", color: .runDone)
                     overviewStat(value: String(format: "%.1f", totalDisplay), unit: unitLabel,
-                                 label: "Total", color: .purple)
+                                 label: "Total", color: .runAccent)
                     overviewStat(value: String(format: "%.1f", remainingDisplay), unit: unitLabel,
-                                 label: "Remaining", color: .orange)
+                                 label: "Remaining", color: .runOrange)
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
@@ -2234,7 +2210,7 @@ struct RunningTodayView<BelowContent: View>: View {
                             .frame(height: 10)
                         RoundedRectangle(cornerRadius: 6)
                             .fill(
-                                LinearGradient(colors: [.green, .blue],
+                                LinearGradient(colors: [.runDone, .runBlue],
                                                startPoint: .leading, endPoint: .trailing)
                             )
                             .frame(height: 10)
@@ -2293,7 +2269,7 @@ struct RunningTodayView<BelowContent: View>: View {
             FrostedGlassContainer {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack(spacing: 8) {
-                        Image(systemName: "arrow.right.circle.fill").foregroundStyle(Color.purple)
+                        Image(systemName: "arrow.right.circle.fill").foregroundStyle(Color.runAccent)
                         Text("Coming Up").font(.headline).foregroundStyle(primaryText)
                     }
 
@@ -2343,16 +2319,16 @@ struct RunningTodayView<BelowContent: View>: View {
             VStack(spacing: 20) {
                 ZStack {
                     Circle()
-                        .fill(Color.purple.opacity(0.12))
+                        .fill(Color.runAccent.opacity(0.12))
                         .frame(width: 72, height: 72)
                     Circle()
-                        .stroke(Color.purple.opacity(0.25), lineWidth: 1.5)
+                        .stroke(Color.runAccent.opacity(0.25), lineWidth: 1.5)
                         .frame(width: 88, height: 88)
                         .scaleEffect(generatingPulse ? 1.18 : 1.0)
                         .opacity(generatingPulse ? 0.0 : 1.0)
                     Image(systemName: "figure.run")
                         .font(.system(size: 32, weight: .semibold))
-                        .foregroundStyle(Color.purple)
+                        .foregroundStyle(Color.runAccent)
                         .scaleEffect(generatingPulse ? 1.05 : 1.0)
                 }
                 .animation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true), value: generatingPulse)
@@ -2372,7 +2348,7 @@ struct RunningTodayView<BelowContent: View>: View {
                 HStack(spacing: 6) {
                     ForEach(0..<3, id: \.self) { i in
                         Circle()
-                            .fill(Color.purple.opacity(generatingDot == i ? 1.0 : 0.25))
+                            .fill(Color.runAccent.opacity(generatingDot == i ? 1.0 : 0.25))
                             .frame(width: 6, height: 6)
                             .animation(.easeInOut(duration: 0.4), value: generatingDot)
                     }
@@ -2391,11 +2367,11 @@ struct RunningTodayView<BelowContent: View>: View {
         HStack(spacing: 10) {
             ZStack {
                 Circle()
-                    .fill(Color.purple.opacity(0.12))
+                    .fill(Color.runAccent.opacity(0.12))
                     .frame(width: 32, height: 32)
                 Image(systemName: "arrow.triangle.2.circlepath")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(Color.purple)
+                    .foregroundStyle(Color.runAccent)
                     .rotationEffect(.degrees(generatingPulse ? 360 : 0))
                     .animation(.linear(duration: 1.8).repeatForever(autoreverses: false), value: generatingPulse)
             }
@@ -2414,8 +2390,7 @@ struct RunningTodayView<BelowContent: View>: View {
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 14)
-                .fill(Color.purple.opacity(0.08))
-                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.purple.opacity(0.18), lineWidth: 1))
+                .fill(Color.runAccent.opacity(0.08))
         )
         .padding(.horizontal, 24)
     }
@@ -2449,7 +2424,7 @@ struct RunningTodayView<BelowContent: View>: View {
         FrostedGlassContainer {
             VStack(spacing: 14) {
                 Image(systemName: "figure.run.circle")
-                    .font(.system(size: 52)).foregroundStyle(Color.purple.opacity(0.45))
+                    .font(.system(size: 52)).foregroundStyle(Color.runAccent.opacity(0.45))
                 Text("No active plan").font(.headline).foregroundStyle(primaryText)
                 Text("Head back and generate a personalised AI running plan to get started.")
                     .font(.subheadline).foregroundStyle(secondaryText).multilineTextAlignment(.center)
@@ -2491,9 +2466,9 @@ struct RunningTodayView<BelowContent: View>: View {
             Text(label)
                 .font(.caption.weight(.semibold))
         }
-        .foregroundStyle(Color.purple)
+        .foregroundStyle(Color.runAccent)
         .padding(.horizontal, 10).padding(.vertical, 5)
-        .background(Capsule().fill(Color.purple.opacity(0.14)))
+        .background(Capsule().fill(Color.runAccent.opacity(0.14)))
     }
 
     private func formatDist(_ km: Double) -> String {
@@ -2507,15 +2482,7 @@ struct RunningTodayView<BelowContent: View>: View {
     }
 
     private func tintFor(_ session: PlannedSession) -> Color {
-        switch session.sessionType {
-        case .easy, .recovery: return .green
-        case .long:            return .blue
-        case .tempo:           return .orange
-        case .intervals:       return .red
-        case .race:            return .purple
-        case .cross:           return .teal
-        case .rest:            return .gray
-        }
+        session.sessionType.tint
     }
 
     private func iconFor(_ session: PlannedSession) -> String {
@@ -2607,8 +2574,8 @@ private struct FineTunePlanSheet: View {
     @Environment(\.colorScheme) private var colorScheme
 
     private var primaryText: Color { Color("AppTextPrimary") }
-    private var secondaryText: Color { Color("AppTextPrimary").opacity(0.7) }
-    private var tertiaryText: Color { Color("AppTextPrimary").opacity(0.5) }
+    private var secondaryText: Color { Color("AppTextPrimary").opacity(0.9) }
+    private var tertiaryText: Color { Color("AppTextPrimary").opacity(0.72) }
 
     var body: some View {
         VStack(spacing: 18) {
@@ -2618,21 +2585,21 @@ private struct FineTunePlanSheet: View {
                 optionCard(
                     reason: .manualHarder,
                     icon: "bolt.fill",
-                    accent: .orange,
+                    accent: .runOrange,
                     title: "Push me harder",
                     subtitle: "Add intensity or volume to upcoming sessions"
                 )
                 optionCard(
                     reason: .manualEasier,
                     icon: "leaf.fill",
-                    accent: .green,
+                    accent: .runDone,
                     title: "Make it easier",
                     subtitle: "Cut volume and ease back the next 1–2 weeks"
                 )
                 optionCard(
                     reason: .manual,
                     icon: "sparkles",
-                    accent: .purple,
+                    accent: .runAccent,
                     title: "Just refine it",
                     subtitle: "Smart tweaks based on your recent runs"
                 )
@@ -2663,11 +2630,11 @@ private struct FineTunePlanSheet: View {
         VStack(spacing: 8) {
             ZStack {
                 Circle()
-                    .fill(Color.purple.opacity(0.15))
+                    .fill(Color.runAccent.opacity(0.15))
                     .frame(width: 56, height: 56)
                 Image(systemName: "sparkles")
                     .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(Color.purple)
+                    .foregroundStyle(Color.runAccent)
             }
             Text("Fine-tune your plan")
                 .font(.title3.weight(.bold))
@@ -2762,8 +2729,8 @@ private struct ClearPlanConfirmSheet: View {
     @Environment(\.colorScheme) private var colorScheme
 
     private var primaryText: Color { Color("AppTextPrimary") }
-    private var secondaryText: Color { Color("AppTextPrimary").opacity(0.7) }
-    private var tertiaryText: Color { Color("AppTextPrimary").opacity(0.5) }
+    private var secondaryText: Color { Color("AppTextPrimary").opacity(0.9) }
+    private var tertiaryText: Color { Color("AppTextPrimary").opacity(0.72) }
 
     var body: some View {
         VStack(spacing: 18) {
@@ -2781,7 +2748,7 @@ private struct ClearPlanConfirmSheet: View {
                         .padding(.vertical, 16)
                         .background(
                             RoundedRectangle(cornerRadius: 14)
-                                .fill(Color.red)
+                                .fill(Color.runRed)
                         )
                 }
                 .buttonStyle(PressableScaleStyle())
@@ -2809,11 +2776,11 @@ private struct ClearPlanConfirmSheet: View {
         VStack(spacing: 8) {
             ZStack {
                 Circle()
-                    .fill(Color.red.opacity(0.15))
+                    .fill(Color.runRed.opacity(0.15))
                     .frame(width: 56, height: 56)
                 Image(systemName: "trash.fill")
                     .font(.system(size: 22, weight: .bold))
-                    .foregroundStyle(Color.red)
+                    .foregroundStyle(Color.runRed)
             }
             Text("Clear running plan?")
                 .font(.title3.weight(.bold))

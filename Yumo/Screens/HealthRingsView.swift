@@ -1683,7 +1683,12 @@ struct HealthRingsView: View {
                             .frame(width: 76, height: 76)
 
                         Circle()
-                            .trim(from: 0, to: animateMileageRing ? CGFloat(min(progress, 1.0)) : 0)
+                            // Reflect live progress directly. Previously gated on
+                            // `animateMileageRing`, which is only set on a tab *change* —
+                            // so the tab already active at launch showed the "%" label but
+                            // an empty arc until you switched tabs and back. The fill still
+                            // animates via `.animation(value: currentKm)` below.
+                            .trim(from: 0, to: CGFloat(min(progress, 1.0)))
                             .stroke(
                                 LinearGradient(
                                     colors: goalReached

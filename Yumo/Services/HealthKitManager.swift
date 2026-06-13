@@ -1407,15 +1407,24 @@ class HealthKitManager: ObservableObject {
     }
 
     func fetchWeeklyMileageHistory(weeksBack: Int = 26) async -> [WeeklyMileageBucket] {
-        let runs = await fetchRecentRuns(limit: 2000, daysBack: weeksBack * 7 + 7)
         var cal = Calendar(identifier: .iso8601)
         cal.firstWeekday = 2
         guard let currentWeekStart = cal.dateInterval(of: .weekOfYear, for: Date())?.start else { return [] }
 
+        // Lightweight: pull raw running workouts and read distance directly. This
+        // deliberately AVOIDS `fetchRecentRuns`, which enriches every workout with
+        // per-workout heart-rate + elevation sub-queries — over a long history that's
+        // hundreds of extra HealthKit round-trips, slow enough that the chart card's
+        // `.task` was often cancelled (user navigates away) before it finished, leaving
+        // the card blank until the next visit. The chart only needs distance + date.
+        let windowStart = cal.date(byAdding: .weekOfYear, value: -weeksBack, to: currentWeekStart) ?? Date()
+        let workouts = await fetchRunningWorkouts(since: windowStart)
+
         var totals: [Date: Double] = [:]
-        for run in runs {
-            guard let meters = run.distanceMeters, meters > 0,
-                  let weekStart = cal.dateInterval(of: .weekOfYear, for: run.date)?.start else { continue }
+        for workout in workouts {
+            let meters = workout.totalDistance?.doubleValue(for: .meter()) ?? 0
+            guard meters > 0,
+                  let weekStart = cal.dateInterval(of: .weekOfYear, for: workout.endDate)?.start else { continue }
             totals[weekStart, default: 0] += meters / 1000.0
         }
 

@@ -43,15 +43,7 @@ struct SessionCompleteSheet: View {
     }
 
     private var sessionTint: Color {
-        switch session.sessionType {
-        case .easy, .recovery: return .green
-        case .long:            return .blue
-        case .tempo:           return .orange
-        case .intervals:       return .red
-        case .race:            return .purple
-        case .cross:           return .teal
-        case .rest:            return .gray
-        }
+        session.sessionType.tint
     }
 
     var body: some View {
@@ -125,7 +117,7 @@ struct SessionCompleteSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 Image(systemName: "heart.fill")
-                    .foregroundStyle(Color.pink.opacity(0.8))
+                    .foregroundStyle(Color.runPink.opacity(0.8))
                     .font(.subheadline)
                 Text("From Apple Health")
                     .font(.headline)
@@ -192,11 +184,11 @@ struct SessionCompleteSheet: View {
             HStack(spacing: 12) {
                 ZStack {
                     Circle()
-                        .fill(isSelected ? Color.pink.opacity(0.12) : Color.primary.opacity(0.06))
+                        .fill(isSelected ? Color.runPink.opacity(0.12) : Color.primary.opacity(0.06))
                         .frame(width: 42, height: 42)
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "figure.run")
                         .font(.subheadline.weight(.bold))
-                        .foregroundStyle(isSelected ? Color.pink.opacity(0.8) : tertiaryText)
+                        .foregroundStyle(isSelected ? Color.runPink.opacity(0.8) : tertiaryText)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -207,9 +199,9 @@ struct SessionCompleteSheet: View {
                         if let label {
                             Text(label)
                                 .font(.caption2.weight(.bold))
-                                .foregroundStyle(Color.pink)
+                                .foregroundStyle(Color.runPink)
                                 .padding(.horizontal, 6).padding(.vertical, 2)
-                                .background(Capsule().fill(Color.pink.opacity(0.12)))
+                                .background(Capsule().fill(Color.runPink.opacity(0.12)))
                         }
                     }
                     HStack(spacing: 4) {
@@ -231,10 +223,10 @@ struct SessionCompleteSheet: View {
             .padding(14)
             .background(
                 RoundedRectangle(cornerRadius: 14)
-                    .fill(isSelected ? Color.pink.opacity(0.06) : Color.primary.opacity(0.04))
+                    .fill(isSelected ? Color.runPink.opacity(0.06) : Color.primary.opacity(0.04))
                     .overlay(
                         RoundedRectangle(cornerRadius: 14)
-                            .strokeBorder(isSelected ? Color.pink.opacity(0.2) : Color.clear, lineWidth: 1)
+                            .strokeBorder(isSelected ? Color.runPink.opacity(0.2) : Color.clear, lineWidth: 1)
                     )
             )
             .contentShape(RoundedRectangle(cornerRadius: 14))
@@ -257,8 +249,8 @@ struct SessionCompleteSheet: View {
                             .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
-                            .background(Color.red.opacity(0.1))
-                            .foregroundStyle(.red)
+                            .background(Color.runRed.opacity(0.1))
+                            .foregroundStyle(.runRed)
                             .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
                     .buttonStyle(.plain)
@@ -278,8 +270,8 @@ struct SessionCompleteSheet: View {
                             .font(.headline)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
-                            .background(Color.pink.opacity(0.14))
-                            .foregroundStyle(Color.pink)
+                            .background(Color.runPink.opacity(0.14))
+                            .foregroundStyle(Color.runPink)
                             .clipShape(RoundedRectangle(cornerRadius: 14))
                         }
                         .buttonStyle(.plain)

@@ -117,13 +117,13 @@ struct RunningPlanBrowserView: View {
                                 .font(.caption2.weight(.bold))
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 8).padding(.vertical, 3)
-                                .background(Capsule().fill(isCurrent ? Color.purple : Color.gray.opacity(0.5)))
+                                .background(Capsule().fill(isCurrent ? Color.runAccent : Color.gray.opacity(0.5)))
                             if isCurrent {
                                 Text("NOW")
                                     .font(.caption2.weight(.bold))
                                     .foregroundStyle(.white)
                                     .padding(.horizontal, 7).padding(.vertical, 3)
-                                    .background(Capsule().fill(Color.green))
+                                    .background(Capsule().fill(Color.runDone))
                             }
                         }
                         if totalKm > 0 {
@@ -136,7 +136,7 @@ struct RunningPlanBrowserView: View {
                     if !runs.isEmpty {
                         Text("\(done)/\(runs.count)")
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(done == runs.count ? Color.green : tertiaryText)
+                            .foregroundStyle(done == runs.count ? Color.runDone : tertiaryText)
                     }
                 }
 
@@ -166,7 +166,7 @@ struct RunningPlanBrowserView: View {
         let isRun = session.sessionType.isRun
         let isCrossOnly = !isRun && session.sessionType == .rest && !cross.isEmpty
 
-        let tint: Color = isCrossOnly ? .purple : tintFor(session)
+        let tint: Color = isCrossOnly ? .runAccent : tintFor(session)
         let label: String = isCrossOnly
             ? cross.map(\.rawValue).joined(separator: " + ")
             : session.sessionType.displayLabel
@@ -233,7 +233,7 @@ struct RunningPlanBrowserView: View {
                                     Text("· also \(cross.map(\.rawValue).joined(separator: " + "))")
                                 }
                                 .font(.caption2)
-                                .foregroundStyle(Color.purple.opacity(0.8))
+                                .foregroundStyle(Color.runAccent.opacity(0.8))
                             }
                         }
                     }
@@ -244,7 +244,7 @@ struct RunningPlanBrowserView: View {
                 if isRun {
                     Image(systemName: session.isCompleted ? "checkmark.circle.fill" : "circle")
                         .font(.title3)
-                        .foregroundStyle(session.isCompleted ? .green : Color.gray.opacity(0.3))
+                        .foregroundStyle(session.isCompleted ? .runDone : Color.gray.opacity(0.3))
                 }
             }
             .padding(.vertical, 8)
@@ -299,7 +299,7 @@ struct RunningPlanBrowserView: View {
         FrostedGlassContainer {
             VStack(spacing: 14) {
                 Image(systemName: "calendar.badge.exclamationmark")
-                    .font(.system(size: 52)).foregroundStyle(Color.purple.opacity(0.4))
+                    .font(.system(size: 52)).foregroundStyle(Color.runAccent.opacity(0.4))
                 Text("No Plan Yet").font(.headline).foregroundStyle(primaryText)
                 Text("Generate a personalised AI running plan to see it here.")
                     .font(.subheadline).foregroundStyle(secondaryText).multilineTextAlignment(.center)
@@ -322,15 +322,7 @@ struct RunningPlanBrowserView: View {
     }
 
     private func tintFor(_ session: PlannedSession) -> Color {
-        switch session.sessionType {
-        case .easy, .recovery: return .green
-        case .long:            return .blue
-        case .tempo:           return .orange
-        case .intervals:       return .red
-        case .race:            return .purple
-        case .cross:           return .teal
-        case .rest:            return .gray
-        }
+        session.sessionType.tint
     }
 
     private func iconFor(_ session: PlannedSession) -> String {

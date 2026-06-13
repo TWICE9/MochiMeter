@@ -76,8 +76,8 @@ struct RestDayRunSheet: View {
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(selectedType != nil ? Color.orange.opacity(0.18) : Color.gray.opacity(0.08))
-                        .foregroundStyle(selectedType != nil ? Color.orange : .secondary)
+                        .background(selectedType != nil ? Color.runOrange.opacity(0.18) : Color.gray.opacity(0.08))
+                        .foregroundStyle(selectedType != nil ? Color.runOrange : .secondary)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
                 .buttonStyle(.plain)
@@ -138,9 +138,9 @@ struct RestDayRunSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 ZStack {
-                    Circle().fill(Color.orange.opacity(0.15)).frame(width: 40, height: 40)
+                    Circle().fill(Color.runOrange.opacity(0.15)).frame(width: 40, height: 40)
                     Image(systemName: "figure.run")
-                        .foregroundStyle(Color.orange)
+                        .foregroundStyle(Color.runOrange)
                         .font(.subheadline.weight(.bold))
                 }
                 VStack(alignment: .leading, spacing: 2) {
@@ -169,8 +169,8 @@ struct RestDayRunSheet: View {
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 14)
-                .fill(Color.orange.opacity(0.07))
-                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.orange.opacity(0.25), lineWidth: 1))
+                .fill(Color.runOrange.opacity(0.07))
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.runOrange.opacity(0.25), lineWidth: 1))
         )
     }
 
@@ -194,15 +194,7 @@ struct RestDayRunSheet: View {
     }
 
     private func tintFor(_ type: RunningSessionType) -> Color {
-        switch type {
-        case .easy, .recovery: return .green
-        case .long:            return .blue
-        case .tempo:           return .orange
-        case .intervals:       return .red
-        case .race:            return .purple
-        case .cross:           return .teal
-        case .rest:            return .gray
-        }
+        type.tint
     }
 
     private func iconFor(_ type: RunningSessionType) -> String {

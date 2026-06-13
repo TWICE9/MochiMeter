@@ -25,11 +25,11 @@ struct RunningOnboardingBanner: View {
             HStack(spacing: 14) {
                 ZStack {
                     Circle()
-                        .fill(Color.purple.opacity(0.2))
+                        .fill(Color.runAccent.opacity(0.2))
                         .frame(width: 44, height: 44)
                     Image(systemName: "figure.run")
                         .font(.title3.weight(.bold))
-                        .foregroundColor(.purple)
+                        .foregroundColor(.runAccent)
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -68,8 +68,8 @@ struct RunningOnboardingBanner: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                Color.purple.opacity(colorScheme == .dark ? 0.22 : 0.12),
-                                Color.purple.opacity(colorScheme == .dark ? 0.10 : 0.05)
+                                Color.runAccent.opacity(colorScheme == .dark ? 0.22 : 0.12),
+                                Color.runAccent.opacity(colorScheme == .dark ? 0.10 : 0.05)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -77,7 +77,7 @@ struct RunningOnboardingBanner: View {
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 18)
-                            .stroke(Color.purple.opacity(0.35), lineWidth: 1)
+                            .stroke(Color.runAccent.opacity(0.35), lineWidth: 1)
                     )
             )
         }

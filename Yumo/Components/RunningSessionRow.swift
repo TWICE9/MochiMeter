@@ -17,15 +17,9 @@ struct RunningSessionRow: View {
 
     @Environment(\.colorScheme) private var colorScheme
 
-    private var primaryText: Color {
-        colorScheme == .dark ? .white : Color(red: 32/255, green: 32/255, blue: 38/255)
-    }
-    private var secondaryText: Color {
-        colorScheme == .dark ? .white.opacity(0.75) : Color(red: 100/255, green: 100/255, blue: 110/255)
-    }
-    private var tertiaryText: Color {
-        colorScheme == .dark ? .white.opacity(0.55) : Color(red: 140/255, green: 140/255, blue: 150/255)
-    }
+    private var primaryText: Color { Color("AppTextPrimary") }
+    private var secondaryText: Color { Color("AppTextPrimary").opacity(0.9) }
+    private var tertiaryText: Color { Color("AppTextPrimary").opacity(0.72) }
 
     private var unitLabel: String { isImperial ? "mi" : "km" }
     private var distanceDisplay: String? {
@@ -50,15 +44,7 @@ struct RunningSessionRow: View {
     }
 
     private var sessionTint: Color {
-        switch session.sessionType {
-        case .easy, .recovery: return .green
-        case .long: return .blue
-        case .tempo: return .orange
-        case .intervals: return .red
-        case .race: return .purple
-        case .cross: return .teal
-        case .rest: return .gray
-        }
+        session.sessionType.tint
     }
 
     private var sessionIcon: String {
@@ -98,7 +84,7 @@ struct RunningSessionRow: View {
                     if session.isCompleted {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(.green)
+                            .foregroundStyle(.runDone)
                     }
                 }
 

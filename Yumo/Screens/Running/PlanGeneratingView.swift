@@ -63,7 +63,7 @@ struct PlanGeneratingView: View {
                         Circle()
                             .fill(
                                 LinearGradient(
-                                    colors: [.purple, .indigo],
+                                    colors: [.runAccent, .runAccent],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 )
@@ -146,19 +146,19 @@ struct PlanGeneratingView: View {
             Color(red: 20/255, green: 14/255, blue: 40/255)
 
             LinearGradient(
-                colors: [Color.purple.opacity(0.6), Color.clear],
+                colors: [Color.runAccent.opacity(0.6), Color.clear],
                 startPoint: .topLeading,
                 endPoint: .center
             ).blur(radius: 40)
 
             LinearGradient(
-                colors: [Color.clear, Color.indigo.opacity(0.4)],
+                colors: [Color.clear, Color.runAccent.opacity(0.4)],
                 startPoint: .center,
                 endPoint: .bottomTrailing
             ).blur(radius: 50)
 
             RadialGradient(
-                colors: [Color.purple.opacity(0.3), Color.clear],
+                colors: [Color.runAccent.opacity(0.3), Color.clear],
                 center: .init(x: 0.5, y: 0.35),
                 startRadius: 0,
                 endRadius: 300

@@ -277,8 +277,14 @@ struct YumoApp: App {
                         fastingManager.setup(context: container.mainContext)
                     }
                     
-                    // Pre-warm HealthKit cache (runs silently if already authorized)
-                    await HealthKitManager.shared.prefetchAllData()
+                    // Pre-warm HealthKit cache for users who've finished onboarding (runs
+                    // silently if already authorized). Skipped during onboarding so a brand-new
+                    // user isn't shown the HealthKit permission dialog the instant the app
+                    // launches — that request belongs on the onboarding HealthKit screen, which
+                    // asks for it when the user taps "Connect".
+                    if UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
+                        await HealthKitManager.shared.prefetchAllData()
+                    }
                     
                     // Start realtime polling for in-session AI analysis updates
                     await PendingAnalysisSync.shared.startListening(modelContext: container.mainContext)

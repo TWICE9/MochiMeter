@@ -38,21 +38,21 @@ struct WeeklyCheckinSheet: View {
                 optionCard(
                     reason: .weeklyTooEasy,
                     icon: "bolt.fill",
-                    accent: .orange,
+                    accent: .runOrange,
                     title: "Felt easy",
                     subtitle: "Add some intensity to next week"
                 )
                 optionCard(
                     reason: .weeklyJustRight,
                     icon: "checkmark.seal.fill",
-                    accent: .green,
+                    accent: .runDone,
                     title: "Just right",
                     subtitle: "Keep the plan as it is"
                 )
                 optionCard(
                     reason: .weeklyTooHard,
                     icon: "leaf.fill",
-                    accent: .blue,
+                    accent: .runBlue,
                     title: "Too hard",
                     subtitle: "Ease back the volume and intensity"
                 )
@@ -83,11 +83,11 @@ struct WeeklyCheckinSheet: View {
         VStack(spacing: 8) {
             ZStack {
                 Circle()
-                    .fill(Color.purple.opacity(0.15))
+                    .fill(Color.runAccent.opacity(0.15))
                     .frame(width: 56, height: 56)
                 Image(systemName: "calendar.badge.checkmark")
                     .font(.system(size: 22, weight: .bold))
-                    .foregroundStyle(Color.purple)
+                    .foregroundStyle(Color.runAccent)
             }
             Text("How did this week feel?")
                 .font(.title3.weight(.bold))

@@ -44,7 +44,7 @@ struct RunningProfileHubView: View {
         FrostedGlassContainer {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 8) {
-                    Image(systemName: "person.fill").foregroundStyle(Color.purple)
+                    Image(systemName: "person.fill").foregroundStyle(Color.runAccent)
                     Text("Running Profile").font(.headline).foregroundStyle(primaryText)
                 }
 
@@ -52,48 +52,48 @@ struct RunningProfileHubView: View {
 
                 VStack(spacing: 0) {
                     profileRow(icon: "figure.run", label: "Experience",
-                               value: p.experience.rawValue, color: .purple)
+                               value: p.experience.rawValue, color: .runAccent)
                     profileRow(icon: "target", label: "Goal",
-                               value: p.primaryGoal.rawValue, color: .blue)
+                               value: p.primaryGoal.rawValue, color: .runBlue)
                     profileRow(icon: "calendar", label: "Runs per week",
-                               value: "\(p.weeklyRunDaysTarget) days", color: .orange)
+                               value: "\(p.weeklyRunDaysTarget) days", color: .runOrange)
 
                     if let days = p.availableDays as? [Weekday], !days.isEmpty {
                         let sorted = [Weekday.mon, .tue, .wed, .thu, .fri, .sat, .sun]
                             .filter { days.contains($0) }
                         profileRow(icon: "clock", label: "Available days",
-                                   value: sorted.map(\.shortLabel).joined(separator: " · "), color: .teal)
+                                   value: sorted.map(\.shortLabel).joined(separator: " · "), color: .runTeal)
                     }
 
                     if let km = p.currentLongestRunKm {
                         let d = isImperial ? km * 0.621371 : km
                         profileRow(icon: "arrow.up.right.circle", label: "Longest run",
-                                   value: String(format: "%.1f %@", d, unitLabel), color: .green)
+                                   value: String(format: "%.1f %@", d, unitLabel), color: .runDone)
                     }
 
                     if let km = p.currentWeeklyKm {
                         let d = isImperial ? km * 0.621371 : km
                         profileRow(icon: "chart.bar", label: "Weekly volume",
-                                   value: String(format: "%.0f %@", d, unitLabel), color: .green)
+                                   value: String(format: "%.0f %@", d, unitLabel), color: .runDone)
                     }
 
                     let benchmarks = benchmarkTimesString(p)
                     if !benchmarks.isEmpty {
                         profileRow(icon: "stopwatch", label: "Recent times",
-                                   value: benchmarks, color: .purple)
+                                   value: benchmarks, color: .runAccent)
                     }
 
                     if let dist = p.targetRaceDistance {
                         Divider().opacity(0.2).padding(.vertical, 4)
                         profileRow(icon: "flag.checkered", label: "Race",
-                                   value: dist.rawValue, color: .red)
+                                   value: dist.rawValue, color: .runRed)
                         if let date = p.targetRaceDate {
                             profileRow(icon: "calendar.badge.clock", label: "Race date",
-                                       value: date.formatted(date: .abbreviated, time: .omitted), color: .red)
+                                       value: date.formatted(date: .abbreviated, time: .omitted), color: .runRed)
                         }
                         if let secs = p.targetRaceGoalTimeSeconds {
                             profileRow(icon: "clock.badge.checkmark", label: "Goal time",
-                                       value: formatSeconds(secs), color: .red)
+                                       value: formatSeconds(secs), color: .runRed)
                         }
                     }
 
@@ -130,7 +130,7 @@ struct RunningProfileHubView: View {
         FrostedGlassContainer {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 8) {
-                    Image(systemName: "gearshape.fill").foregroundStyle(Color.purple)
+                    Image(systemName: "gearshape.fill").foregroundStyle(Color.runAccent)
                     Text("Plan Actions").font(.headline).foregroundStyle(primaryText)
                 }
 
@@ -142,9 +142,9 @@ struct RunningProfileHubView: View {
                 } label: {
                     HStack(spacing: 12) {
                         ZStack {
-                            Circle().fill(Color.orange.opacity(0.12)).frame(width: 36, height: 36)
+                            Circle().fill(Color.runOrange.opacity(0.12)).frame(width: 36, height: 36)
                             Image(systemName: "arrow.triangle.2.circlepath")
-                                .font(.subheadline.weight(.semibold)).foregroundStyle(.orange)
+                                .font(.subheadline.weight(.semibold)).foregroundStyle(.runOrange)
                         }
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Regenerate Plan")
@@ -169,7 +169,7 @@ struct RunningProfileHubView: View {
         FrostedGlassContainer {
             VStack(spacing: 14) {
                 Image(systemName: "person.crop.circle.badge.questionmark")
-                    .font(.system(size: 48)).foregroundStyle(Color.purple.opacity(0.4))
+                    .font(.system(size: 48)).foregroundStyle(Color.runAccent.opacity(0.4))
                 Text("No profile found").font(.headline).foregroundStyle(primaryText)
                 Text("Complete the running onboarding to set up your profile.")
                     .font(.subheadline).foregroundStyle(secondaryText).multilineTextAlignment(.center)

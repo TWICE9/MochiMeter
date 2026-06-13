@@ -66,12 +66,12 @@ struct RunningProgressView: View {
         let doneDisplay = isImperial ? totalCompletedKm * 0.621371 : totalCompletedKm
         let targetDisplay = isImperial ? totalTargetKm * 0.621371 : totalTargetKm
         let adherence = totalRuns > 0 ? Int((Double(completedRuns) / Double(totalRuns)) * 100) : 0
-        let adherenceColor: Color = adherence >= 80 ? .green : adherence >= 60 ? .orange : .red
+        let adherenceColor: Color = adherence >= 80 ? .runDone : adherence >= 60 ? .runOrange : .runRed
 
         return FrostedGlassContainer {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 8) {
-                    Image(systemName: "chart.bar.fill").foregroundStyle(Color.purple)
+                    Image(systemName: "chart.bar.fill").foregroundStyle(Color.runAccent)
                     Text("Overall").font(.headline).foregroundStyle(primaryText)
                 }
 
@@ -79,16 +79,16 @@ struct RunningProgressView: View {
 
                 HStack(spacing: 12) {
                     bigStat(value: String(format: "%.1f", doneDisplay), unit: unitLabel,
-                            label: "Logged", color: .purple)
+                            label: "Logged", color: .runAccent)
                     bigStat(value: "\(completedRuns)", unit: "runs",
-                            label: "Completed", color: .green)
+                            label: "Completed", color: .runDone)
                     bigStat(value: "\(adherence)%", unit: "",
                             label: "Adherence", color: adherenceColor)
                 }
 
                 if totalTargetKm > 0 {
                     VStack(alignment: .leading, spacing: 4) {
-                        ProgressView(value: min(1.0, totalCompletedKm / totalTargetKm)).tint(.purple)
+                        ProgressView(value: min(1.0, totalCompletedKm / totalTargetKm)).tint(.runAccent)
                         Text(String(format: "%.1f of %.1f %@ planned total",
                                     doneDisplay, targetDisplay, unitLabel))
                             .font(.caption).foregroundStyle(tertiaryText)
@@ -132,7 +132,7 @@ struct RunningProgressView: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 8) {
                     Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-                        .foregroundStyle(Color.purple)
+                        .foregroundStyle(Color.runAccent)
                     Text("Week by Week").font(.headline).foregroundStyle(primaryText)
                 }
 
@@ -158,7 +158,7 @@ struct RunningProgressView: View {
         let doneKm = done.compactMap { $0.completedDistanceKm ?? $0.targetDistanceKm }.reduce(0, +)
         let displayKm = isImperial ? doneKm * 0.621371 : doneKm
         let fraction: Double = runs.isEmpty ? 0 : Double(done.count) / Double(runs.count)
-        let color: Color = fraction >= 0.8 ? .green : fraction >= 0.6 ? .orange : .red
+        let color: Color = fraction >= 0.8 ? .runDone : fraction >= 0.6 ? .runOrange : .runRed
 
         return HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
@@ -172,7 +172,7 @@ struct RunningProgressView: View {
                 HStack(spacing: 3) {
                     ForEach(0..<runs.count, id: \.self) { i in
                         Circle()
-                            .fill(i < done.count ? Color.green
+                            .fill(i < done.count ? Color.runDone
                                   : i < done.count + skipped.count ? Color.gray.opacity(0.35)
                                   : Color.gray.opacity(0.15))
                             .frame(width: 8, height: 8)
@@ -191,7 +191,7 @@ struct RunningProgressView: View {
         FrostedGlassContainer {
             VStack(spacing: 14) {
                 Image(systemName: "chart.bar.xaxis")
-                    .font(.system(size: 52)).foregroundStyle(Color.purple.opacity(0.4))
+                    .font(.system(size: 52)).foregroundStyle(Color.runAccent.opacity(0.4))
                 Text("No sessions logged yet").font(.headline).foregroundStyle(primaryText)
                 Text("Complete your first session to start tracking progress here.")
                     .font(.subheadline).foregroundStyle(secondaryText).multilineTextAlignment(.center)

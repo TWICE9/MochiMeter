@@ -18,15 +18,9 @@ struct RunningPlanCard: View {
 
     @Environment(\.colorScheme) private var colorScheme
 
-    private var primaryText: Color {
-        colorScheme == .dark ? .white : Color(red: 32/255, green: 32/255, blue: 38/255)
-    }
-    private var secondaryText: Color {
-        colorScheme == .dark ? .white.opacity(0.75) : Color(red: 100/255, green: 100/255, blue: 110/255)
-    }
-    private var tertiaryText: Color {
-        colorScheme == .dark ? .white.opacity(0.55) : Color(red: 140/255, green: 140/255, blue: 150/255)
-    }
+    private var primaryText: Color { Color("AppTextPrimary") }
+    private var secondaryText: Color { Color("AppTextPrimary").opacity(0.9) }
+    private var tertiaryText: Color { Color("AppTextPrimary").opacity(0.72) }
 
     // Cached once per view identity — sorting 80-120 sessions on every render
     // was the primary source of lag when navigating to this page.
@@ -90,10 +84,10 @@ struct RunningPlanCard: View {
             HStack(alignment: .center, spacing: 10) {
                 ZStack {
                     Circle()
-                        .fill(Color.purple.opacity(0.15))
+                        .fill(Color.runAccent.opacity(0.15))
                         .frame(width: 38, height: 38)
                     Image(systemName: "figure.run")
-                        .foregroundStyle(Color.purple)
+                        .foregroundStyle(Color.runAccent)
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(plan.name)
@@ -145,9 +139,9 @@ struct RunningPlanCard: View {
                         .padding(.vertical, 12)
                         .background(
                             RoundedRectangle(cornerRadius: 12)
-                                .fill(session.isCompleted ? Color.green.opacity(0.2) : Color.purple)
+                                .fill(session.isCompleted ? Color.runDone.opacity(0.2) : Color.runAccent)
                         )
-                        .foregroundStyle(session.isCompleted ? Color.green : .white)
+                        .foregroundStyle(session.isCompleted ? Color.runDone : .white)
                     }
                     .buttonStyle(.plain)
 
@@ -161,9 +155,9 @@ struct RunningPlanCard: View {
                             .padding(.vertical, 12)
                             .background(
                                 RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.purple.opacity(0.4), lineWidth: 1.5)
+                                    .stroke(Color.runAccent.opacity(0.4), lineWidth: 1.5)
                             )
-                            .foregroundStyle(Color.purple)
+                            .foregroundStyle(Color.runAccent)
                     }
                     .buttonStyle(.plain)
                 }
@@ -179,9 +173,9 @@ struct RunningPlanCard: View {
                         .padding(.vertical, 12)
                         .background(
                             RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.purple.opacity(0.4), lineWidth: 1.5)
+                                .stroke(Color.runAccent.opacity(0.4), lineWidth: 1.5)
                         )
-                        .foregroundStyle(Color.purple)
+                        .foregroundStyle(Color.runAccent)
                 }
                 .buttonStyle(.plain)
             }
@@ -258,14 +252,6 @@ struct RunningPlanCard: View {
     }
 
     private func sessionTint(_ session: PlannedSession) -> Color {
-        switch session.sessionType {
-        case .easy, .recovery: return .green
-        case .long: return .blue
-        case .tempo: return .orange
-        case .intervals: return .red
-        case .race: return .purple
-        case .cross: return .teal
-        case .rest: return .gray
-        }
+        session.sessionType.tint
     }
 }

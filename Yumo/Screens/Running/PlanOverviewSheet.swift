@@ -59,14 +59,14 @@ struct PlanOverviewSheet: View {
                         .foregroundStyle(tertiaryText)
                     } else {
                         Button("Done") { dismiss() }
-                            .foregroundStyle(Color.purple)
+                            .foregroundStyle(Color.runAccent)
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if isEditing {
                         Button("Save") { saveEdits() }
                             .font(.headline)
-                            .foregroundStyle(Color.purple)
+                            .foregroundStyle(Color.runAccent)
                     } else {
                         Button {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -75,7 +75,7 @@ struct PlanOverviewSheet: View {
                         } label: {
                             Label("Edit", systemImage: "pencil")
                                 .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(Color.purple)
+                                .foregroundStyle(Color.runAccent)
                         }
                     }
                 }
@@ -94,24 +94,24 @@ struct PlanOverviewSheet: View {
                         .font(.title2.weight(.bold))
                         .foregroundStyle(primaryText)
                         .padding(12)
-                        .background(RoundedRectangle(cornerRadius: 12).fill(Color.purple.opacity(0.07)))
+                        .background(RoundedRectangle(cornerRadius: 12).fill(Color.runAccent.opacity(0.07)))
 
                     fieldLabel("RACE / EVENT NAME (OPTIONAL)")
                     TextField("e.g. London Marathon 2025", text: $editRaceName)
                         .font(.subheadline)
                         .foregroundStyle(primaryText)
                         .padding(12)
-                        .background(RoundedRectangle(cornerRadius: 12).fill(Color.purple.opacity(0.07)))
+                        .background(RoundedRectangle(cornerRadius: 12).fill(Color.runAccent.opacity(0.07)))
                 }
                 .padding(.horizontal, 24)
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 10) {
                         ZStack {
-                            Circle().fill(Color.purple.opacity(0.12)).frame(width: 48, height: 48)
+                            Circle().fill(Color.runAccent.opacity(0.12)).frame(width: 48, height: 48)
                             Image(systemName: "figure.run")
                                 .font(.title3.weight(.bold))
-                                .foregroundStyle(Color.purple)
+                                .foregroundStyle(Color.runAccent)
                         }
                         VStack(alignment: .leading, spacing: 3) {
                             Text(plan.name)
@@ -128,11 +128,11 @@ struct PlanOverviewSheet: View {
 
                     HStack(spacing: 8) {
                         if let dist = plan.targetRaceDistance {
-                            pill(dist.rawValue, color: .purple)
+                            pill(dist.rawValue, color: .runAccent)
                         }
-                        pill(plan.goalType.rawValue, color: .blue)
+                        pill(plan.goalType.rawValue, color: .runBlue)
                         if plan.generationSource == .ai {
-                            pill("AI Generated", color: .indigo)
+                            pill("AI Generated", color: .runAccent)
                         }
                     }
                 }
@@ -151,13 +151,13 @@ struct PlanOverviewSheet: View {
 
                 detailRow(icon: "play.fill", label: "Start date",
                           value: plan.startDate.formatted(date: .abbreviated, time: .omitted),
-                          color: .green)
+                          color: .runDone)
                 detailRow(icon: "checkered.flag", label: "End date",
                           value: endDate.formatted(date: .abbreviated, time: .omitted),
-                          color: .red)
+                          color: .runRed)
                 detailRow(icon: "calendar.badge.clock", label: "Duration",
                           value: "\(plan.totalWeeks) weeks",
-                          color: .purple)
+                          color: .runAccent)
 
                 if let raceDate = plan.targetRaceDate {
                     Divider().opacity(0.2).padding(.vertical, 6)
@@ -169,7 +169,7 @@ struct PlanOverviewSheet: View {
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(primaryText)
                             }
-                            .tint(.purple)
+                            .tint(.runAccent)
                             if editHasRaceDate {
                                 DatePicker("", selection: $editRaceDate, displayedComponents: .date)
                                     .datePickerStyle(.compact)
@@ -182,7 +182,7 @@ struct PlanOverviewSheet: View {
                         let daysLeft = Calendar.current.dateComponents([.day], from: today, to: raceDate).day ?? 0
                         detailRow(icon: "flag.checkered", label: "Race date",
                                   value: "\(raceDate.formatted(date: .abbreviated, time: .omitted)) · \(max(0, daysLeft)) days away",
-                                  color: .orange)
+                                  color: .runOrange)
                     }
                 } else if isEditing {
                     Divider().opacity(0.2).padding(.vertical, 6)
@@ -191,7 +191,7 @@ struct PlanOverviewSheet: View {
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(primaryText)
                     }
-                    .tint(.purple)
+                    .tint(.runAccent)
                     .padding(.vertical, 4)
                     if editHasRaceDate {
                         DatePicker("", selection: $editRaceDate, displayedComponents: .date)
@@ -210,7 +210,7 @@ struct PlanOverviewSheet: View {
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(primaryText)
                             }
-                            .tint(.purple)
+                            .tint(.runAccent)
                             if editHasGoalTime {
                                 HStack(spacing: 0) {
                                     Picker("", selection: $editGoalHours) {
@@ -232,7 +232,7 @@ struct PlanOverviewSheet: View {
                         .padding(.vertical, 4)
                     } else if let secs = plan.targetRaceGoalTimeSeconds {
                         detailRow(icon: "clock.badge.checkmark", label: "Goal time",
-                                  value: formatSeconds(secs), color: .purple)
+                                  value: formatSeconds(secs), color: .runAccent)
                     }
                 }
             }
@@ -249,17 +249,17 @@ struct PlanOverviewSheet: View {
                 Divider().opacity(0.3).padding(.bottom, 8)
 
                 HStack(spacing: 12) {
-                    statBox(value: "\(done)", unit: "/\(runs.count)", label: "Sessions done", color: .green)
+                    statBox(value: "\(done)", unit: "/\(runs.count)", label: "Sessions done", color: .runDone)
                     let displayKm = isImperial ? totalPlannedKm * 0.621371 : totalPlannedKm
                     statBox(value: String(format: "%.0f", displayKm), unit: unitLabel,
-                            label: "Total planned", color: .purple)
+                            label: "Total planned", color: .runAccent)
                     let pct = runs.isEmpty ? 0 : Int(Double(done) / Double(runs.count) * 100)
-                    statBox(value: "\(pct)%", unit: "", label: "Complete", color: pct >= 80 ? .green : pct >= 50 ? .orange : .purple)
+                    statBox(value: "\(pct)%", unit: "", label: "Complete", color: pct >= 80 ? .runDone : pct >= 50 ? .runOrange : .runAccent)
                 }
 
                 if !runs.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
-                        ProgressView(value: Double(done), total: Double(runs.count)).tint(.purple)
+                        ProgressView(value: Double(done), total: Double(runs.count)).tint(.runAccent)
                         Text("\(done) of \(runs.count) sessions complete")
                             .font(.caption).foregroundStyle(tertiaryText)
                     }
@@ -274,7 +274,7 @@ struct PlanOverviewSheet: View {
 
     private func sectionHeader(_ title: String, icon: String) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: icon).foregroundStyle(Color.purple)
+            Image(systemName: icon).foregroundStyle(Color.runAccent)
             Text(title).font(.headline).foregroundStyle(primaryText)
         }
         .padding(.bottom, 10)
