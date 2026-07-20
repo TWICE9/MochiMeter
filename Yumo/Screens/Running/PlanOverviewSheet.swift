@@ -34,7 +34,7 @@ struct PlanOverviewSheet: View {
     private var done: Int { runs.filter(\.isCompleted).count }
     private var totalPlannedKm: Double { runs.compactMap(\.targetDistanceKm).reduce(0, +) }
     private var endDate: Date {
-        Calendar.current.date(byAdding: .weekOfYear, value: plan.totalWeeks, to: plan.startDate) ?? plan.startDate
+        plan.targetRaceDate ?? Calendar.current.date(byAdding: .weekOfYear, value: plan.totalWeeks, to: plan.startDate) ?? plan.startDate
     }
 
     var body: some View {

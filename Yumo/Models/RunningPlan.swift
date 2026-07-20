@@ -148,6 +148,19 @@ extension RunningPlan {
         get { RunningPlanGenerationSource(rawValue: generationSourceRaw) ?? .ai }
         set { generationSourceRaw = newValue.rawValue }
     }
+
+    /// Marks the plan as completed if the target race date has passed and the
+    /// plan is still active. Safe to call on every launch — does nothing when
+    /// the plan has no race date, has already been completed, or the race is
+    /// still in the future.
+    func completeIfRacePassed() {
+        guard status == .active,
+              let raceDate = targetRaceDate,
+              Date() > raceDate
+        else { return }
+        status = .completed
+        updatedAt = Date()
+    }
 }
 
 // MARK: - PlannedSession

@@ -390,6 +390,10 @@ struct CreateRecipeView: View {
                 onSelect: { ingredient in
                     ingredientToAdd = ingredient
                     showingSearch = false
+                },
+                onCustomAdd: { ingredient in
+                    addedIngredients.append(ingredient)
+                    showingSearch = false
                 }
             )
             .presentationDetents([.large])
@@ -608,6 +612,7 @@ struct IngredientSearchSheet: View {
     }
 
     let onSelect: (CreateRecipeView.IngredientToAdd) -> Void
+    let onCustomAdd: ((CreateRecipeView.RecipeIngredient) -> Void)?
 
     @State private var searchText = ""
     @State private var commonFoodResults: [CommonFood] = []
@@ -618,6 +623,7 @@ struct IngredientSearchSheet: View {
     @State private var searchTask: Task<Void, Error>?
     @State private var aiError: String?
     @State private var showBarcodeScanner = false
+    @State private var showingCustomIngredient = false
     @FocusState private var isSearchFocused: Bool
 
     private let apiService = OpenFoodFactsService()
@@ -700,6 +706,35 @@ struct IngredientSearchSheet: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
+
+                // Custom ingredient button — always accessible
+                Button {
+                    isSearchFocused = false
+                    showingCustomIngredient = true
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "square.and.pencil")
+                            .font(.subheadline)
+                        Text("Enter Manually")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        Spacer()
+                        Text("Custom")
+                            .font(.caption)
+                            .foregroundStyle(secondaryText.opacity(0.6))
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(secondaryText.opacity(0.4))
+                    }
+                    .foregroundStyle(accentColor)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(accentColor.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
 
                 // Results
                 ScrollView {
@@ -908,6 +943,14 @@ struct IngredientSearchSheet: View {
                 },
                 onCancel: {
                     showBarcodeScanner = false
+                }
+            )
+        }
+        .sheet(isPresented: $showingCustomIngredient) {
+            CustomIngredientSheet(
+                onAdd: { ingredient in
+                    showingCustomIngredient = false
+                    onCustomAdd?(ingredient)
                 }
             )
         }
@@ -1412,6 +1455,317 @@ struct AddIngredientSheet: View {
                 gramsInput = "\(Int(gramsPerServing))"
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     isGramsFocused = true
+                }
+            }
+        }
+        .presentationDetents([.large])
+    }
+}
+
+// MARK: - Custom Ingredient Sheet
+
+struct CustomIngredientSheet: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject var themeManager: ThemeManager
+    @Environment(\.dismiss) private var dismiss
+
+    let onAdd: (CreateRecipeView.RecipeIngredient) -> Void
+
+    @State private var ingredientName: String = ""
+    @State private var caloriesText: String = ""
+    @State private var proteinText: String = ""
+    @State private var carbsText: String = ""
+    @State private var fatText: String = ""
+    @State private var gramsText: String = ""
+
+    @FocusState private var focusedField: Field?
+
+    enum Field: Hashable {
+        case name, grams, calories, protein, carbs, fat
+    }
+
+    private var primaryText: Color {
+        colorScheme == .light ? Color(red: 34/255, green: 34/255, blue: 40/255) : .white
+    }
+    private var secondaryText: Color {
+        colorScheme == .light ? Color(red: 120/255, green: 120/255, blue: 130/255) : .white.opacity(0.7)
+    }
+    private var cardBackground: Color {
+        colorScheme == .light ? Color.white : Color.white.opacity(0.08)
+    }
+    private var accentColor: Color {
+        colorScheme == .dark ? themeManager.currentTheme.darkPrimaryColor : themeManager.currentTheme.primaryColor
+    }
+
+    private var parsedCalories: Double { Double(caloriesText.replacingOccurrences(of: ",", with: ".")) ?? 0 }
+    private var parsedProtein: Double { Double(proteinText.replacingOccurrences(of: ",", with: ".")) ?? 0 }
+    private var parsedCarbs: Double { Double(carbsText.replacingOccurrences(of: ",", with: ".")) ?? 0 }
+    private var parsedFat: Double { Double(fatText.replacingOccurrences(of: ",", with: ".")) ?? 0 }
+    private var parsedGrams: Double { Double(gramsText.replacingOccurrences(of: ",", with: ".")) ?? 0 }
+
+    private var canAdd: Bool {
+        !ingredientName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && parsedCalories > 0
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 24) {
+
+                    // Name field
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Ingredient Name")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundStyle(secondaryText)
+
+                        TextField("e.g., Homemade Pesto", text: $ingredientName)
+                            .font(.body)
+                            .foregroundStyle(primaryText)
+                            .padding(14)
+                            .background(cardBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .focused($focusedField, equals: .name)
+                            .submitLabel(.next)
+                            .onSubmit { focusedField = .grams }
+                    }
+
+                    // Weight field (optional, informational)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Weight (optional)")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .foregroundStyle(secondaryText)
+                            Spacer()
+                            Text("grams")
+                                .font(.caption)
+                                .foregroundStyle(secondaryText.opacity(0.6))
+                        }
+
+                        TextField("e.g., 200", text: $gramsText)
+                            .keyboardType(.decimalPad)
+                            .font(.body)
+                            .foregroundStyle(primaryText)
+                            .padding(14)
+                            .background(cardBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .focused($focusedField, equals: .grams)
+                    }
+
+                    // Divider with label
+                    HStack(spacing: 12) {
+                        Rectangle()
+                            .frame(height: 1)
+                            .foregroundStyle(secondaryText.opacity(0.2))
+                        Text("Nutrition (for the full amount above)")
+                            .font(.caption)
+                            .foregroundStyle(secondaryText)
+                            .lineLimit(1)
+                            .layoutPriority(1)
+                        Rectangle()
+                            .frame(height: 1)
+                            .foregroundStyle(secondaryText.opacity(0.2))
+                    }
+
+                    // Calories
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Calories")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundStyle(secondaryText)
+
+                        HStack(spacing: 8) {
+                            TextField("0", text: $caloriesText)
+                                .keyboardType(.decimalPad)
+                                .font(.system(size: 36, weight: .bold, design: .rounded))
+                                .foregroundStyle(primaryText)
+                                .focused($focusedField, equals: .calories)
+                                .frame(maxWidth: 120)
+
+                            Text("kcal")
+                                .font(.system(size: 20, weight: .semibold, design: .rounded))
+                                .foregroundStyle(secondaryText)
+                        }
+                        .padding(14)
+                        .background(cardBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(focusedField == .calories ? accentColor : Color.clear, lineWidth: 2)
+                        )
+                    }
+
+                    // Macros row
+                    HStack(spacing: 12) {
+                        // Protein
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Protein")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .foregroundStyle(secondaryText)
+                            HStack(spacing: 4) {
+                                TextField("0", text: $proteinText)
+                                    .keyboardType(.decimalPad)
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(primaryText)
+                                    .focused($focusedField, equals: .protein)
+                                    .frame(maxWidth: 60)
+                                Text("g")
+                                    .font(.caption)
+                                    .foregroundStyle(secondaryText)
+                            }
+                            .padding(10)
+                            .background(cardBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(focusedField == .protein ? .pink : Color.clear, lineWidth: 1.5)
+                            )
+                        }
+
+                        // Carbs
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Carbs")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .foregroundStyle(secondaryText)
+                            HStack(spacing: 4) {
+                                TextField("0", text: $carbsText)
+                                    .keyboardType(.decimalPad)
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(primaryText)
+                                    .focused($focusedField, equals: .carbs)
+                                    .frame(maxWidth: 60)
+                                Text("g")
+                                    .font(.caption)
+                                    .foregroundStyle(secondaryText)
+                            }
+                            .padding(10)
+                            .background(cardBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(focusedField == .carbs ? accentColor : Color.clear, lineWidth: 1.5)
+                            )
+                        }
+
+                        // Fat
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Fat")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .foregroundStyle(secondaryText)
+                            HStack(spacing: 4) {
+                                TextField("0", text: $fatText)
+                                    .keyboardType(.decimalPad)
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(primaryText)
+                                    .focused($focusedField, equals: .fat)
+                                    .frame(maxWidth: 60)
+                                Text("g")
+                                    .font(.caption)
+                                    .foregroundStyle(secondaryText)
+                            }
+                            .padding(10)
+                            .background(cardBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(focusedField == .fat ? .orange : Color.clear, lineWidth: 1.5)
+                            )
+                        }
+                    }
+
+                    // Live preview
+                    if parsedCalories > 0 {
+                        VStack(spacing: 12) {
+                            HStack {
+                                Text("Preview")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                    .foregroundStyle(secondaryText)
+                                Spacer()
+                            }
+
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(ingredientName.isEmpty ? "Custom Ingredient" : ingredientName)
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                        .foregroundStyle(primaryText)
+                                        .lineLimit(1)
+                                    if parsedGrams > 0 {
+                                        Text("\(Int(parsedGrams))g")
+                                            .font(.caption)
+                                            .foregroundStyle(secondaryText)
+                                    }
+                                }
+                                Spacer()
+                                Text("\(Int(parsedCalories)) kcal")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(accentColor)
+                            }
+                        }
+                        .padding(14)
+                        .background(cardBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+
+                    Spacer(minLength: 20)
+
+                    // Add button
+                    Button {
+                        let description: String
+                        if parsedGrams > 0 {
+                            description = "\(Int(parsedGrams))g (custom)"
+                        } else {
+                            description = "custom"
+                        }
+
+                        let newIngredient = CreateRecipeView.RecipeIngredient(
+                            name: ingredientName.trimmingCharacters(in: .whitespacesAndNewlines),
+                            servingDescription: description,
+                            amount: 1.0,
+                            caloriesPerServing: parsedCalories,
+                            proteinPerServing: parsedProtein,
+                            carbsPerServing: parsedCarbs,
+                            fatPerServing: parsedFat
+                        )
+                        onAdd(newIngredient)
+                    } label: {
+                        Text("Add Ingredient")
+                            .font(.headline)
+                            .fontWeight(.bold)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(canAdd ? accentColor : Color.gray.opacity(0.5))
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                    }
+                    .disabled(!canAdd)
+                    .padding(.bottom, 8)
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 16)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .background(colorScheme == .light ? Color(red: 244/255, green: 245/255, blue: 247/255) : Color("AppPrimaryDark"))
+            .onTapGesture {
+                focusedField = nil
+            }
+            .navigationTitle("Custom Ingredient")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundStyle(accentColor)
+                }
+            }
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    focusedField = .name
                 }
             }
         }

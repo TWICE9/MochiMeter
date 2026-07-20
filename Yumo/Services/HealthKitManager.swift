@@ -1538,8 +1538,16 @@ class HealthKitManager: ObservableObject {
 
         if !forceRefresh,
            let lastFetch = lastWeeklyRunStatsFetch,
-           Date().timeIntervalSince(lastFetch) < Self.heavyScanTTL {
-            // Re-apply the goal calculation on cached runs without a new HealthKit query
+           Date().timeIntervalSince(lastFetch) < Self.heavyScanTTL,
+           lastFetch.isInSameISOWeek(as: Date()) {
+            // Skip the heavy HealthKit scan but still push the goal to the
+            // widget. The cached weekly km is already accurate; only the goal
+            // may have changed (e.g. a new running plan was created).
+            if let defaults = UserDefaults(suiteName: "group.com.jesseta.yumo") {
+                defaults.set(thisWeekRunKm, forKey: "weekly_run_km")
+                defaults.set(goalKm, forKey: "weekly_run_goal_km")
+                WidgetCenter.shared.reloadTimelines(ofKind: "WeeklyMileageWidget")
+            }
             return
         }
 

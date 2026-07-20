@@ -298,6 +298,18 @@ struct YumoApp: App {
                     if let userId = authManager.currentUser?.id.uuidString.lowercased() {
                         await CloudSyncManager.shared.syncRunningProfile(userId: userId, context: container.mainContext)
                         await CloudSyncManager.shared.syncRunningPlans(userId: userId, context: container.mainContext)
+
+                        // Auto-complete plans whose race date has passed so the
+                        // adaptation detector can skip them and the UI shows
+                        // "Done" instead of a stale countdown.
+                        let allPlans = (try? container.mainContext.fetch(FetchDescriptor<RunningPlan>())) ?? []
+                        var completedAny = false
+                        for plan in allPlans where plan.status == .active {
+                            plan.completeIfRacePassed()
+                            if plan.status == .completed { completedAny = true }
+                        }
+                        if completedAny { try? container.mainContext.save() }
+
                         await FitnessService.shared.fetchRuns()
 
                         // Phase 2 plan adaptation: passively check whether
